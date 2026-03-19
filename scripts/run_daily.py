@@ -192,13 +192,13 @@ def call_llm_generate_report(articles: List[Dict[str, Any]]) -> str:
 
 def send_to_telegram(message: str) -> Dict[str, Any]:
     """
-    发送消息到Telegram
+    发送消息到Telegram (支持超长消息自动拆分)
 
     Args:
         message: 要发送的消息内容（Markdown格式）
 
     Returns:
-        发送结果
+        发送结果 (返回最后一条消息的结果)
     """
     logger.info("开始发送到Telegram...")
 
@@ -211,45 +211,63 @@ def send_to_telegram(message: str) -> Dict[str, Any]:
             "缺少Telegram配置：请设置 TELEGRAM_BOT_TOKEN 和 TELEGRAM_CHAT_ID 环境变量"
         )
 
-    # Telegram 消息长度限制为 4096 字符
-    if len(message) > 4000:
-        logger.warning(f"消息长度({len(message)})超过限制，正在截断...")
-        message = message[:3900] + "\n\n...(内容过长已截断)"
+    # Telegram 消息长度限制为 4096 字符，安全起见使用 4000
+    MAX_LENGTH = 4000
+    
+    # 拆分消息
+    messages = []
+    if len(message) <= MAX_LENGTH:
+        messages.append(message)
+    else:
+        logger.warning(f"消息长度({len(message)})超过限制，正在拆分发送...")
+        # 按行拆分，尽量保持结构完整
+        current_chunk = ""
+        for line in message.split("\n"):
+            if len(current_chunk) + len(line) + 1 > MAX_LENGTH:
+                messages.append(current_chunk.strip())
+                current_chunk = line + "\n"
+            else:
+                current_chunk += line + "\n"
+        if current_chunk:
+            messages.append(current_chunk.strip())
 
     # 构建API URL
     api_url = f"{TELEGRAM_API_BASE_URL}/bot{bot_token}/sendMessage"
+    
+    last_result = {"success": True}
+    
+    for i, msg in enumerate(messages):
+        if len(messages) > 1:
+            logger.info(f"发送第 {i+1}/{len(messages)} 部分...")
+            
+        payload = {
+            "chat_id": chat_id,
+            "text": msg,
+            "parse_mode": "Markdown",
+            "disable_web_page_preview": True,
+        }
 
-    # 发送消息
-    payload = {
-        "chat_id": chat_id,
-        "text": message,
-        "parse_mode": "Markdown",
-        "disable_web_page_preview": True,
-    }
+        try:
+            response = requests.post(api_url, json=payload, timeout=30)
+            if response.status_code != 200:
+                logger.error(f"Telegram API 报错详情: {response.text}")
+            response.raise_for_status()
+            result = response.json()
 
-    try:
-        response = requests.post(api_url, json=payload, timeout=30)
-
-        if response.status_code != 200:
-            logger.error(f"Telegram API 报错详情: {response.text}")
-
-        response.raise_for_status()
-
-        result = response.json()
-
-        if result.get("ok"):
-            logger.info("✅ Telegram推送成功")
-            return {"success": True, "message_id": result["result"]["message_id"]}
-        else:
-            logger.error(f"Telegram推送失败: {result}")
-            return {
-                "success": False,
-                "error": result.get("description", "Unknown error"),
-            }
-
-    except Exception as e:
-        logger.error(f"Telegram推送异常: {e}")
-        raise
+            if result.get("ok"):
+                logger.info(f"✅ Telegram部分 {i+1} 推送成功")
+                last_result = {"success": True, "message_id": result["result"]["message_id"]}
+            else:
+                logger.error(f"Telegram推送失败: {result}")
+                return {
+                    "success": False,
+                    "error": result.get("description", "Unknown error"),
+                }
+        except Exception as e:
+            logger.error(f"Telegram推送异常: {e}")
+            raise
+            
+    return last_result
 
 
 def format_report_for_telegram(report: str, article_count: int) -> str:
