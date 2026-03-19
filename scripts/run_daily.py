@@ -221,6 +221,11 @@ def send_to_telegram(message: str) -> Dict[str, Any]:
     if not bot_token or not chat_id:
         raise ValueError("缺少Telegram配置：请设置 TELEGRAM_BOT_TOKEN 和 TELEGRAM_CHAT_ID 环境变量")
     
+    # Telegram 消息长度限制为 4096 字符
+    if len(message) > 4000:
+        logger.warning(f"消息长度({len(message)})超过限制，正在截断...")
+        message = message[:3900] + "\n\n...(内容过长已截断)"
+
     # 构建API URL
     api_url = f"{TELEGRAM_API_BASE_URL}/bot{bot_token}/sendMessage"
     
@@ -234,6 +239,10 @@ def send_to_telegram(message: str) -> Dict[str, Any]:
     
     try:
         response = requests.post(api_url, json=payload, timeout=30)
+        
+        if response.status_code != 200:
+            logger.error(f"Telegram API 报错详情: {response.text}")
+            
         response.raise_for_status()
         
         result = response.json()
