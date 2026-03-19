@@ -195,7 +195,7 @@ def send_to_telegram(message: str) -> Dict[str, Any]:
     发送消息到Telegram (支持超长消息自动拆分)
 
     Args:
-        message: 要发送的消息内容（Markdown格式）
+        message: 要发送的消息内容（HTML格式）
 
     Returns:
         发送结果 (返回最后一条消息的结果)
@@ -224,7 +224,8 @@ def send_to_telegram(message: str) -> Dict[str, Any]:
         current_chunk = ""
         for line in message.split("\n"):
             if len(current_chunk) + len(line) + 1 > MAX_LENGTH:
-                messages.append(current_chunk.strip())
+                if current_chunk:
+                    messages.append(current_chunk.strip())
                 current_chunk = line + "\n"
             else:
                 current_chunk += line + "\n"
@@ -243,7 +244,7 @@ def send_to_telegram(message: str) -> Dict[str, Any]:
         payload = {
             "chat_id": chat_id,
             "text": msg,
-            "parse_mode": "Markdown",
+            "parse_mode": "HTML",
             "disable_web_page_preview": True,
         }
 
@@ -285,7 +286,7 @@ def format_report_for_telegram(report: str, article_count: int) -> str:
     today = datetime.now().strftime("%Y年%m月%d日")
 
     header = f"""
-* 📅 {today} | 资讯日报*
+<b>📅 {today} | 资讯日报</b>
 """
 
     return header + report
@@ -306,7 +307,7 @@ def main():
             logger.warning("⚠️ 未获取到任何文章，可能是时间范围内无更新")
             # 发送提示消息
             send_to_telegram(
-                f"*📰 今日资讯日报*\n\n"
+                f"<b>📰 今日资讯日报</b>\n\n"
                 f"⚠️ 最近{hours_filter}小时暂无新文章更新\n\n"
                 f"请检查RSS源是否正常"
             )
