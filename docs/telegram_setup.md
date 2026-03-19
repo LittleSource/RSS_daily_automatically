@@ -89,6 +89,3 @@ export TELEGRAM_API_BASE_URL="https://api.telegram.org"
 - 检查 Chat ID 是否正确
 - 检查网络连接是否正常
 - 检查自定义API服务器是否可访问
-
-### 使用代理服务器
-本工作流默认使用代理服务器 `http://f.52ym.vip/telegram`，无需科学上网即可推送消息。
