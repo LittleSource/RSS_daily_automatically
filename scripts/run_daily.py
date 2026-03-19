@@ -58,7 +58,7 @@ RSS_SOURCES = [
 ]
 
 # 代理服务器配置
-TELEGRAM_API_BASE_URL = os.getenv("TELEGRAM_API_BASE_URL", "http://f.52ym.vip/telegram")
+TELEGRAM_API_BASE_URL = os.getenv("TELEGRAM_API_BASE_URL", "https://api.telegram.org")
 
 
 def fetch_rss_feeds(hours_filter: int = 24) -> List[Dict[str, Any]]:
