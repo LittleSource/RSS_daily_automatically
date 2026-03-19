@@ -6,7 +6,7 @@ mode=""
 node=""
 input=""
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WORK_DIR="${COZE_WORKSPACE_PATH:-$(dirname "$SCRIPT_DIR")}"
+WORK_DIR="$(dirname "$SCRIPT_DIR")"
 
 usage() {
   echo "用法: $0 -m <模式> [-n <节点ID>] [-i <输入JSON>]"
@@ -51,12 +51,6 @@ if [ -z "$mode" ]; then
   echo "错误: 必须指定 -m 参数"
   usage
   exit -1
-fi
-
-# Load environment variables
-if [ -f "${SCRIPT_DIR}/load_env.sh" ]; then
-  echo "Loading environment variables..."
-  source "${SCRIPT_DIR}/load_env.sh"
 fi
 
 # Build python command
