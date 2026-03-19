@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 # ============= RSS源配置 =============
 RSS_SOURCES = [
     # 科技媒体
-    "https://www.csdn.net/rss/newest",
+    "https://rss.csdn.net/csdngeeknews/rss/map?spm=1001.2014.3001.5494",
     "https://sspai.com/feed",
     # 中文资讯
     "https://36kr.com/feed",
