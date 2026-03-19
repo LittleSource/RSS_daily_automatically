@@ -197,27 +197,6 @@ def call_llm_generate_report(articles: List[Dict[str, Any]]) -> str:
         logger.info("日报生成成功")
         return report
         
-    except ImportError:
-        logger.error("未安装zhipuai库，正在安装...")
-        import subprocess
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "zhipuai"])
-        from zhipuai import ZhipuAI
-        
-        client = ZhipuAI(api_key=api_key)
-        response = client.chat.completions.create(
-            model=llm_config['config']['model'],
-            messages=[
-                {"role": "system", "content": llm_config['sp']},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=llm_config['config'].get('temperature', 0.7),
-            max_tokens=llm_config['config'].get('max_tokens', 4096)
-        )
-        
-        report = response.choices[0].message.content
-        logger.info("日报生成成功")
-        return report
-        
     except Exception as e:
         logger.error(f"调用智谱AI失败: {e}")
         raise
