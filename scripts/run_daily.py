@@ -13,7 +13,9 @@ from typing import Any, Dict, List
 
 import feedparser
 import requests
+from bs4 import BeautifulSoup
 from dateutil import parser as date_parser
+from markdown import markdown
 
 # 配置日志
 logging.basicConfig(
@@ -121,7 +123,7 @@ def call_llm_generate_report(articles: List[Dict[str, Any]]) -> str:
         articles: 文章列表
 
     Returns:
-        生成的日报文本
+        生成的日报文本 (Markdown格式)
     """
     logger.info("开始调用智谱AI生成日报...")
 
@@ -161,7 +163,7 @@ def call_llm_generate_report(articles: List[Dict[str, Any]]) -> str:
 3. 推荐3-5篇最值得阅读的文章
 4. 总结今日亮点和趋势
 5. 使用emoji增加可读性
-6. 输出HTML格式，使用合适的标签
+6. 输出Markdown格式，使用合适的标题和列表
 """
 
     # 调用智谱AI API
@@ -190,15 +192,131 @@ def call_llm_generate_report(articles: List[Dict[str, Any]]) -> str:
         raise
 
 
+def html_to_telegraph_nodes(html: str) -> List[Any]:
+    """
+    将HTML字符串转换为Telegraph API所需的Node格式
+
+    Args:
+        html: HTML内容
+
+    Returns:
+        Node列表
+    """
+    soup = BeautifulSoup(html, "html.parser")
+
+    def element_to_node(element):
+        if isinstance(element, str):
+            return element
+
+        node = {"tag": element.name, "children": []}
+        if element.attrs:
+            # 过滤支持的属性 (主要是 href 和 src)
+            allowed_attrs = ["href", "src"]
+            node["attrs"] = {k: v for k, v in element.attrs.items() if k in allowed_attrs}
+
+        for child in element.children:
+            child_node = element_to_node(child)
+            if child_node:
+                if isinstance(child_node, list):
+                    node["children"].extend(child_node)
+                else:
+                    node["children"].append(child_node)
+
+        # Telegraph 只支持特定的标签
+        supported_tags = [
+            "a", "aside", "b", "blockquote", "br", "code", "em",
+            "figcaption", "figure", "h3", "h4", "hr", "i", "iframe",
+            "img", "li", "ol", "p", "pre", "s", "strong", "u", "ul", "video"
+        ]
+        
+        # 将不支持的标题标签映射到支持的标签
+        if node["tag"] in ["h1", "h2"]:
+            node["tag"] = "h3"
+        elif node["tag"] == "span":
+             return node["children"]
+
+        if node["tag"] not in supported_tags:
+            return node["children"]
+
+        return node
+
+    nodes = []
+    for child in soup.children:
+        node = element_to_node(child)
+        if isinstance(node, list):
+            nodes.extend(node)
+        elif node:
+            nodes.append(node)
+
+    return [n for n in nodes if n]
+
+
+def upload_to_telegraph(title: str, md_content: str) -> str:
+    """
+    将Markdown内容上传到Telegraph
+
+    Args:
+        title: 页面标题
+        md_content: Markdown格式的内容
+
+    Returns:
+        生成的URL
+    """
+    logger.info("开始上传到Telegraph...")
+
+    try:
+        # 1. 将Markdown转换为HTML
+        html_content = markdown(md_content)
+
+        # 2. 将HTML转换为Telegraph Nodes
+        nodes = html_to_telegraph_nodes(html_content)
+
+        # 3. 获取或创建Access Token
+        access_token = os.getenv("TELEGRAPH_ACCESS_TOKEN")
+        if not access_token:
+            logger.info("未找到 TELEGRAPH_ACCESS_TOKEN，正在创建临时账号...")
+            acc_res = requests.get(
+                "https://api.telegra.ph/createAccount",
+                params={"short_name": "RSSDaily", "author_name": "RSS Daily Bot"},
+            ).json()
+            if not acc_res.get("ok"):
+                raise ValueError(f"创建Telegraph账号失败: {acc_res}")
+            access_token = acc_res["result"]["access_token"]
+            logger.info("临时账号创建成功")
+
+        # 4. 创建页面
+        page_res = requests.post(
+            "https://api.telegra.ph/createPage",
+            data={
+                "access_token": access_token,
+                "title": title,
+                "content": json.dumps(nodes),
+                "return_content": "false",
+            },
+        ).json()
+
+        if page_res.get("ok"):
+            url = page_res["result"]["url"]
+            logger.info(f"Telegraph页面创建成功: {url}")
+            return url
+        else:
+            logger.error(f"Telegraph页面创建失败: {page_res}")
+            raise ValueError(f"Telegraph API 错误: {page_res.get('error')}")
+
+    except Exception as e:
+        logger.error(f"上传到Telegraph失败: {e}")
+        raise
+
+
 def send_to_telegram(message: str) -> Dict[str, Any]:
     """
-    发送消息到Telegram (支持超长消息自动拆分)
+    发送消息到Telegram
 
     Args:
         message: 要发送的消息内容（HTML格式）
 
     Returns:
-        发送结果 (返回最后一条消息的结果)
+        发送结果
     """
     logger.info("开始发送到Telegram...")
 
@@ -211,85 +329,35 @@ def send_to_telegram(message: str) -> Dict[str, Any]:
             "缺少Telegram配置：请设置 TELEGRAM_BOT_TOKEN 和 TELEGRAM_CHAT_ID 环境变量"
         )
 
-    # Telegram 消息长度限制为 4096 字符，安全起见使用 4000
-    MAX_LENGTH = 4000
-    
-    # 拆分消息
-    messages = []
-    if len(message) <= MAX_LENGTH:
-        messages.append(message)
-    else:
-        logger.warning(f"消息长度({len(message)})超过限制，正在拆分发送...")
-        # 按行拆分，尽量保持结构完整
-        current_chunk = ""
-        for line in message.split("\n"):
-            if len(current_chunk) + len(line) + 1 > MAX_LENGTH:
-                if current_chunk:
-                    messages.append(current_chunk.strip())
-                current_chunk = line + "\n"
-            else:
-                current_chunk += line + "\n"
-        if current_chunk:
-            messages.append(current_chunk.strip())
-
     # 构建API URL
     api_url = f"{TELEGRAM_API_BASE_URL}/bot{bot_token}/sendMessage"
     
-    last_result = {"success": True}
-    
-    for i, msg in enumerate(messages):
-        if len(messages) > 1:
-            logger.info(f"发送第 {i+1}/{len(messages)} 部分...")
-            
-        payload = {
-            "chat_id": chat_id,
-            "text": msg,
-            "parse_mode": "HTML",
-            "disable_web_page_preview": True,
-        }
+    payload = {
+        "chat_id": chat_id,
+        "text": message,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": False,
+    }
 
-        try:
-            response = requests.post(api_url, json=payload, timeout=30)
-            if response.status_code != 200:
-                logger.error(f"Telegram API 报错详情: {response.text}")
-            response.raise_for_status()
-            result = response.json()
+    try:
+        response = requests.post(api_url, json=payload, timeout=30)
+        if response.status_code != 200:
+            logger.error(f"Telegram API 报错详情: {response.text}")
+        response.raise_for_status()
+        result = response.json()
 
-            if result.get("ok"):
-                logger.info(f"✅ Telegram部分 {i+1} 推送成功")
-                last_result = {"success": True, "message_id": result["result"]["message_id"]}
-            else:
-                logger.error(f"Telegram推送失败: {result}")
-                return {
-                    "success": False,
-                    "error": result.get("description", "Unknown error"),
-                }
-        except Exception as e:
-            logger.error(f"Telegram推送异常: {e}")
-            raise
-            
-    return last_result
-
-
-def format_report_for_telegram(report: str, article_count: int) -> str:
-    """
-    格式化日报为Telegram消息格式
-
-    Args:
-        report: 大模型生成的日报内容
-        article_count: 文章总数
-
-    Returns:
-        格式化后的消息
-    """
-    # 添加日期和统计信息
-    today = datetime.now().strftime("%Y年%m月%d日")
-
-    header = f"""
-<b>📅 {today} | 资讯日报</b>
-"""
-
-    return header + report
+        if result.get("ok"):
+            logger.info("✅ Telegram 推送成功")
+            return {"success": True, "message_id": result["result"]["message_id"]}
+        else:
+            logger.error(f"Telegram推送失败: {result}")
+            return {
+                "success": False,
+                "error": result.get("description", "Unknown error"),
+            }
+    except Exception as e:
+        logger.error(f"Telegram推送异常: {e}")
+        raise
 
 
 def main():
@@ -307,26 +375,36 @@ def main():
             logger.warning("⚠️ 未获取到任何文章，可能是时间范围内无更新")
             # 发送提示消息
             send_to_telegram(
-                f"<b>📰 今日资讯日报</b>\n\n"
+                f"<b>📅 今日资讯日报</b>\n\n"
                 f"⚠️ 最近{hours_filter}小时暂无新文章更新\n\n"
                 f"请检查RSS源是否正常"
             )
             return
 
-        # 2. 生成日报
-        report = call_llm_generate_report(articles)
+        # 2. 生成日报 (Markdown格式)
+        report_md = call_llm_generate_report(articles)
 
-        # 3. 格式化消息
-        message = format_report_for_telegram(report, len(articles))
+        # 3. 上传到Telegraph
+        today = datetime.now().strftime("%Y年%m月%d日")
+        title = f"{today} | 资讯日报"
+        telegraph_url = upload_to_telegraph(title, report_md)
 
-        # 4. 发送到Telegram
-        result = send_to_telegram(message)
+        # 4. 格式化并发送到Telegram (使用文本发送URL)
+        tg_message = f"""
+<b>📅 {today} | 资讯日报已生成</b>
+
+🚀 今日共收录 {len(articles)} 篇文章。
+
+🔗 <b>完整日报查看：</b>
+{telegraph_url}
+"""
+        result = send_to_telegram(tg_message)
 
         if result.get("success"):
             logger.info("=" * 50)
             logger.info("✅ RSS日报推送成功！")
             logger.info(f"📊 文章数: {len(articles)}")
-            logger.info(f"💬 消息ID: {result.get('message_id')}")
+            logger.info(f"🔗 Telegraph URL: {telegraph_url}")
             logger.info("=" * 50)
         else:
             logger.error(f"❌ 推送失败: {result.get('error')}")
