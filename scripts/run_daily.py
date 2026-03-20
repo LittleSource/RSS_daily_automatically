@@ -13,7 +13,7 @@ from typing import Any, Dict, List
 
 import feedparser
 import requests
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, NavigableString
 from dateutil import parser as date_parser
 from markdown import markdown
 
@@ -195,32 +195,15 @@ def call_llm_generate_report(articles: List[Dict[str, Any]]) -> str:
 def html_to_telegraph_nodes(html: str) -> List[Any]:
     """
     将HTML字符串转换为Telegraph API所需的Node格式
-
-    Args:
-        html: HTML内容
-
-    Returns:
-        Node列表
     """
     soup = BeautifulSoup(html, "html.parser")
 
     def element_to_node(element):
-        if isinstance(element, str):
-            return element
-
-        node = {"tag": element.name, "children": []}
-        if element.attrs:
-            # 过滤支持的属性 (主要是 href 和 src)
-            allowed_attrs = ["href", "src"]
-            node["attrs"] = {k: v for k, v in element.attrs.items() if k in allowed_attrs}
-
-        for child in element.children:
-            child_node = element_to_node(child)
-            if child_node:
-                if isinstance(child_node, list):
-                    node["children"].extend(child_node)
-                else:
-                    node["children"].append(child_node)
+        if isinstance(element, NavigableString):
+            return str(element)
+        
+        if not hasattr(element, 'name'):
+            return None
 
         # Telegraph 只支持特定的标签
         supported_tags = [
@@ -228,15 +211,53 @@ def html_to_telegraph_nodes(html: str) -> List[Any]:
             "figcaption", "figure", "h3", "h4", "hr", "i", "iframe",
             "img", "li", "ol", "p", "pre", "s", "strong", "u", "ul", "video"
         ]
-        
-        # 将不支持的标题标签映射到支持的标签
-        if node["tag"] in ["h1", "h2"]:
-            node["tag"] = "h3"
-        elif node["tag"] == "span":
-             return node["children"]
 
-        if node["tag"] not in supported_tags:
-            return node["children"]
+        tag = element.name
+        if tag in ["h1", "h2"]:
+            tag = "h3"
+        elif tag == "span" or tag == "div":
+            # 对于不支持的容器标签，扁平化处理其子节点
+            children = []
+            for child in element.children:
+                child_node = element_to_node(child)
+                if child_node:
+                    if isinstance(child_node, list):
+                        children.extend(child_node)
+                    else:
+                        children.append(child_node)
+            return children
+        elif tag not in supported_tags:
+            # 同样扁平化处理其他不支持的标签
+            children = []
+            for child in element.children:
+                child_node = element_to_node(child)
+                if child_node:
+                    if isinstance(child_node, list):
+                        children.extend(child_node)
+                    else:
+                        children.append(child_node)
+            return children
+
+        node = {"tag": tag, "children": []}
+        
+        # 属性处理
+        if element.attrs:
+            allowed_attrs = ["href", "src"]
+            attrs = {k: v for k, v in element.attrs.items() if k in allowed_attrs}
+            if attrs:
+                node["attrs"] = attrs
+
+        # 子节点处理
+        for child in element.children:
+            child_node = element_to_node(child)
+            if child_node:
+                if isinstance(child_node, list):
+                    node["children"].extend(child_node)
+                else:
+                    node["children"].append(child_node)
+        
+        if not node["children"]:
+            del node["children"]
 
         return node
 
@@ -254,13 +275,6 @@ def html_to_telegraph_nodes(html: str) -> List[Any]:
 def upload_to_telegraph(title: str, md_content: str) -> str:
     """
     将Markdown内容上传到Telegraph
-
-    Args:
-        title: 页面标题
-        md_content: Markdown格式的内容
-
-    Returns:
-        生成的URL
     """
     logger.info("开始上传到Telegraph...")
 
@@ -311,12 +325,6 @@ def upload_to_telegraph(title: str, md_content: str) -> str:
 def send_to_telegram(message: str) -> Dict[str, Any]:
     """
     发送消息到Telegram
-
-    Args:
-        message: 要发送的消息内容（HTML格式）
-
-    Returns:
-        发送结果
     """
     logger.info("开始发送到Telegram...")
 
