@@ -95,8 +95,8 @@ export TELEGRAM_CHAT_ID="你的Chat ID"
 # 编辑crontab
 crontab -e
 
-# 每天早上9点执行
-0 9 * * * curl -X POST "http://localhost:5000/run?async=true" -H "Content-Type: application/json" -d '{}'
+# 每天早上8:30执行
+30 8 * * * curl -X POST "http://localhost:5000/run?async=true" -H "Content-Type: application/json" -d '{}'
 ```
 
 ## 同步模式使用（不推荐）

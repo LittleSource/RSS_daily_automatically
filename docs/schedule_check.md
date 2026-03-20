@@ -4,13 +4,13 @@
 
 ### ❌ 问题发现
 
-1. **服务启动时间**：10:49:15（今天早上9点服务未运行）
+1. **服务启动时间**：10:49:15（今天早上8:30服务未运行）
 2. **定时任务**：未配置自动定时执行
 3. **推送记录**：日志中无推送记录
 
 ### 🔍 原因分析
 
-- 服务在10:49才启动，错过了早上9点的推送时间
+- 服务在10:49才启动，错过了早上8:30的推送时间
 - 没有配置定时任务来自动触发RSS日报生成
 - 需要手动调用或配置定时任务
 
@@ -40,8 +40,8 @@ import asyncio
 scheduler = AsyncIOScheduler()
 
 async def scheduled_rss_report():
-    """定时任务：每天9点执行RSS日报"""
-    logger.info("Starting scheduled RSS report task at 9:00 AM")
+    """定时任务：每天8:30执行RSS日报"""
+    logger.info("Starting scheduled RSS report task at 8:30 AM")
     try:
         # 创建空的payload
         payload = {}
@@ -56,16 +56,16 @@ async def scheduled_rss_report():
 # 在应用启动时添加定时任务
 @app.on_event("startup")
 async def startup_event():
-    # 添加每天9点执行的任务
+    # 添加每天8:30执行的任务
     scheduler.add_job(
         scheduled_rss_report,
-        CronTrigger(hour=9, minute=0),
+        CronTrigger(hour=8, minute=30),
         id="rss_daily_report",
-        name="RSS Daily Report at 9 AM",
+        name="RSS Daily Report at 8:30 AM",
         replace_existing=True
     )
     scheduler.start()
-    logger.info("Scheduler started, daily report scheduled at 9:00 AM")
+    logger.info("Scheduler started, daily report scheduled at 8:30 AM")
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -100,10 +100,10 @@ WantedBy=multi-user.target
 2. 创建定时器文件 `/etc/systemd/system/rss-daily.timer`:
 ```ini
 [Unit]
-Description=Run RSS Daily Report at 9 AM
+Description=Run RSS Daily Report at 8:30 AM
 
 [Timer]
-OnCalendar=*-*-* 09:00:00
+OnCalendar=*-*-* 08:30:00
 Persistent=true
 
 [Install]
@@ -128,8 +128,8 @@ apt-get install -y cron
 # 编辑crontab
 crontab -e
 
-# 添加以下行（每天9点执行）
-0 9 * * * cd /workspace/projects && curl -X POST http://localhost:5000/run?async=true -H "Content-Type: application/json" -d '{}' >> /var/log/rss_daily.log 2>&1
+# 添加以下行（每天8:30执行）
+30 8 * * * cd /workspace/projects && curl -X POST http://localhost:5000/run?async=true -H "Content-Type: application/json" -d '{}' >> /var/log/rss_daily.log 2>&1
 ```
 
 ## 当前状态
