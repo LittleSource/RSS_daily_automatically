@@ -247,6 +247,7 @@ def call_llm_generate_report(articles: List[Dict[str, Any]]) -> str:
 4. 总结今日亮点和趋势
 5. 使用emoji增加可读性
 6. 输出Markdown格式，使用合适的标题和列表
+7. 有序列表必须写成 `1. 内容` 的单行格式，序号和内容之间不要换行
 """
 
     # 调用智谱AI API
@@ -330,14 +331,40 @@ def html_to_telegraph_nodes(html: str) -> List[Any]:
             if attrs:
                 node["attrs"] = attrs
 
-        # 子节点处理
-        for child in element.children:
-            child_node = element_to_node(child)
-            if child_node:
-                if isinstance(child_node, list):
-                    node["children"].extend(child_node)
-                else:
-                    node["children"].append(child_node)
+        # Telegraph 对 li > p 的渲染会把序号和正文拆开显示，这里把段落拍平成同一项。
+        if tag == "li":
+            paragraph_count = 0
+            for child in element.children:
+                if getattr(child, "name", None) == "p":
+                    if paragraph_count > 0 and node["children"]:
+                        node["children"].append({"tag": "br"})
+                        node["children"].append({"tag": "br"})
+
+                    for paragraph_child in child.children:
+                        paragraph_node = element_to_node(paragraph_child)
+                        if paragraph_node:
+                            if isinstance(paragraph_node, list):
+                                node["children"].extend(paragraph_node)
+                            else:
+                                node["children"].append(paragraph_node)
+                    paragraph_count += 1
+                    continue
+
+                child_node = element_to_node(child)
+                if child_node:
+                    if isinstance(child_node, list):
+                        node["children"].extend(child_node)
+                    else:
+                        node["children"].append(child_node)
+        else:
+            # 子节点处理
+            for child in element.children:
+                child_node = element_to_node(child)
+                if child_node:
+                    if isinstance(child_node, list):
+                        node["children"].extend(child_node)
+                    else:
+                        node["children"].append(child_node)
         
         if not node["children"]:
             del node["children"]
@@ -363,7 +390,7 @@ def upload_to_telegraph(title: str, md_content: str) -> str:
 
     try:
         # 1. 将Markdown转换为HTML
-        html_content = markdown(md_content)
+        html_content = markdown(md_content, extensions=["extra", "sane_lists"])
 
         # 2. 将HTML转换为Telegraph Nodes
         nodes = html_to_telegraph_nodes(html_content)
