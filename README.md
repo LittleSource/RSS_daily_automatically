@@ -1,6 +1,6 @@
 # RSS日报自动推送
 
-从多个RSS源获取最新资讯，生成结构化日报并推送到Telegram。
+从多个RSS源获取最新资讯，生成结构化日报并推送到Telegram/Discord。
 
 ## 🎯 特性
 
@@ -40,6 +40,9 @@
 | `ZHIPUAI_API_KEY` | 智谱AI API Key |
 | `TELEGRAM_BOT_TOKEN` | Telegram Bot Token |
 | `TELEGRAM_CHAT_ID` | 接收消息的Chat ID |
+| `DISCORD_WEBHOOK_URL` | Discord Webhook URL，可选 |
+| `DISCORD_BOT_TOKEN` | Discord Bot Token，可选 |
+| `DISCORD_CHANNEL_ID` | Discord Channel ID，可选 |
 
 ### 4. 启用GitHub Actions
 
@@ -66,6 +69,7 @@ pip install zhipuai
 export ZHIPUAI_API_KEY="your_api_key"
 export TELEGRAM_BOT_TOKEN="your_bot_token"
 export TELEGRAM_CHAT_ID="your_chat_id"
+export DISCORD_WEBHOOK_URL="your_discord_webhook_url"  # 可选
 export HOURS_FILTER="24"  # 可选
 ```
 
@@ -81,6 +85,12 @@ python scripts/run_daily.py
 python scripts/test_telegram.py
 ```
 
+### 测试Discord配置
+
+```bash
+python scripts/test_discord.py
+```
+
 ## 📁 项目结构
 
 ```
@@ -92,7 +102,8 @@ python scripts/test_telegram.py
 │   └── generate_report_llm_cfg.json  # GLM模型配置
 ├── scripts/
 │   ├── run_daily.py           # 主执行脚本
-│   └── test_telegram.py       # Telegram配置测试
+│   ├── test_telegram.py       # Telegram配置测试
+│   └── test_discord.py        # Discord配置测试
 ├── docs/                      # 文档
 └── requirements.txt           # Python依赖
 ```
@@ -228,6 +239,7 @@ Telegram推送
 
 - [快速开始](docs/quick_start.md)
 - [Telegram配置教程](docs/telegram_setup.md)
+- [Discord配置教程](docs/discord_setup.md)
 - [GitHub Actions配置](docs/github_actions_setup.md)
 - [消息格式说明](docs/message_format.md)
 

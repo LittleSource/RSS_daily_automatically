@@ -43,6 +43,89 @@ RSS_SOURCES = [
 
 # 代理服务器配置
 TELEGRAM_API_BASE_URL = os.getenv("TELEGRAM_API_BASE_URL", "https://api.telegram.org")
+DISCORD_API_BASE_URL = os.getenv("DISCORD_API_BASE_URL", "https://discord.com/api/v10")
+
+
+def get_push_channel_status() -> Dict[str, bool]:
+    """
+    检查推送通道配置状态。
+    """
+    telegram_bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+    telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID")
+    telegram_any = bool(telegram_bot_token or telegram_chat_id)
+    telegram_ready = bool(telegram_bot_token and telegram_chat_id)
+    if telegram_any and not telegram_ready:
+        raise ValueError(
+            "Telegram 配置不完整：请同时设置 TELEGRAM_BOT_TOKEN 和 TELEGRAM_CHAT_ID"
+        )
+
+    discord_webhook_url = os.getenv("DISCORD_WEBHOOK_URL")
+    discord_bot_token = os.getenv("DISCORD_BOT_TOKEN")
+    discord_channel_id = os.getenv("DISCORD_CHANNEL_ID")
+    discord_any = bool(discord_webhook_url or discord_bot_token or discord_channel_id)
+    discord_ready = bool(discord_webhook_url) or bool(
+        discord_bot_token and discord_channel_id
+    )
+    if discord_any and not discord_ready:
+        raise ValueError(
+            "Discord 配置不完整：请设置 DISCORD_WEBHOOK_URL，或同时设置 DISCORD_BOT_TOKEN 和 DISCORD_CHANNEL_ID"
+        )
+
+    if not telegram_ready and not discord_ready:
+        raise ValueError(
+            "未检测到可用推送通道：请配置 Telegram 或 Discord 的环境变量"
+        )
+
+    return {"telegram": telegram_ready, "discord": discord_ready}
+
+
+def build_telegram_report_message(today: str, article_count: int, telegraph_url: str) -> str:
+    """
+    构建 Telegram 日报消息。
+    """
+    return f"""
+<b>📰 {today} | 资讯日报已生成</b>
+
+📌 今日共收录 {article_count} 篇文章。
+
+🔗 <b>完整日报查看：</b>
+{telegraph_url}
+""".strip()
+
+
+def build_discord_report_message(today: str, article_count: int, telegraph_url: str) -> str:
+    """
+    构建 Discord 日报消息。
+    """
+    return (
+        f"## 📰 {today} | 资讯日报已生成\n\n"
+        f"📌 今日共收录 **{article_count}** 篇文章。\n\n"
+        f"🔗 完整日报：{telegraph_url}"
+    )
+
+
+def build_telegram_empty_message(hours_filter: int) -> str:
+    """
+    构建 Telegram 无更新提示。
+    """
+    return f"""
+<b>📰 今日资讯日报</b>
+
+⚠️ 最近 {hours_filter} 小时暂无新文章更新
+
+请检查 RSS 源是否正常。
+""".strip()
+
+
+def build_discord_empty_message(hours_filter: int) -> str:
+    """
+    构建 Discord 无更新提示。
+    """
+    return (
+        "## 📰 今日资讯日报\n\n"
+        f"⚠️ 最近 **{hours_filter}** 小时暂无新文章更新。\n\n"
+        "请检查 RSS 源是否正常。"
+    )
 
 
 def fetch_rss_feeds(hours_filter: int = 24) -> List[Dict[str, Any]]:
@@ -368,6 +451,63 @@ def send_to_telegram(message: str) -> Dict[str, Any]:
         raise
 
 
+def send_to_discord(message: str) -> Dict[str, Any]:
+    """
+    发送消息到 Discord。
+    """
+    logger.info("开始发送到Discord...")
+
+    webhook_url = os.getenv("DISCORD_WEBHOOK_URL")
+    bot_token = os.getenv("DISCORD_BOT_TOKEN")
+    channel_id = os.getenv("DISCORD_CHANNEL_ID")
+
+    headers = {"Content-Type": "application/json"}
+    payload = {"content": message}
+
+    if webhook_url:
+        api_url = webhook_url
+    elif bot_token and channel_id:
+        api_url = f"{DISCORD_API_BASE_URL}/channels/{channel_id}/messages"
+        headers["Authorization"] = f"Bot {bot_token}"
+    else:
+        raise ValueError(
+            "缺少Discord配置：请设置 DISCORD_WEBHOOK_URL，或同时设置 DISCORD_BOT_TOKEN 和 DISCORD_CHANNEL_ID"
+        )
+
+    try:
+        response = requests.post(api_url, json=payload, headers=headers, timeout=30)
+        if response.status_code not in (200, 204):
+            logger.error(f"Discord API 报错详情: {response.text}")
+        response.raise_for_status()
+
+        if response.status_code == 204:
+            logger.info("✅ Discord 推送成功")
+            return {"success": True}
+
+        result = response.json()
+        logger.info("✅ Discord 推送成功")
+        return {"success": True, "message_id": result.get("id")}
+    except Exception as e:
+        logger.error(f"Discord推送异常: {e}")
+        raise
+
+
+def send_notifications(telegram_message: str, discord_message: str) -> Dict[str, Dict[str, Any]]:
+    """
+    发送消息到所有已配置的推送通道。
+    """
+    channel_status = get_push_channel_status()
+    results: Dict[str, Dict[str, Any]] = {}
+
+    if channel_status["telegram"]:
+        results["telegram"] = send_to_telegram(telegram_message)
+
+    if channel_status["discord"]:
+        results["discord"] = send_to_discord(discord_message)
+
+    return results
+
+
 def main():
     """主函数"""
     logger.info("=" * 50)
@@ -421,6 +561,53 @@ def main():
     except Exception as e:
         logger.error(f"❌ 任务执行失败: {e}", exc_info=True)
         sys.exit(1)
+
+def main_v2():
+    """主函数。"""
+    logger.info("=" * 50)
+    logger.info("RSS日报推送任务开始")
+    logger.info("=" * 50)
+
+    try:
+        hours_filter = int(os.getenv("HOURS_FILTER", "24"))
+        articles = fetch_rss_feeds(hours_filter)
+
+        if not articles:
+            logger.warning("⚠️ 未获取到任何文章，可能是时间范围内无更新")
+            results = send_notifications(
+                build_telegram_empty_message(hours_filter),
+                build_discord_empty_message(hours_filter),
+            )
+            logger.info(f"空日报通知已发送: {', '.join(results.keys())}")
+            return
+
+        report_md = call_llm_generate_report(articles)
+
+        today = datetime.now().strftime("%Y年%m月%d日")
+        title = f"{today} | 资讯日报"
+        telegraph_url = upload_to_telegraph(title, report_md)
+
+        results = send_notifications(
+            build_telegram_report_message(today, len(articles), telegraph_url),
+            build_discord_report_message(today, len(articles), telegraph_url),
+        )
+
+        if all(result.get("success") for result in results.values()):
+            logger.info("=" * 50)
+            logger.info("✅ RSS日报推送成功！")
+            logger.info(f"📰 文章数: {len(articles)}")
+            logger.info(f"🔗 Telegraph URL: {telegraph_url}")
+            logger.info(f"📨 推送通道: {', '.join(results.keys())}")
+            logger.info("=" * 50)
+        else:
+            logger.error(f"❌ 推送失败: {results}")
+            sys.exit(1)
+
+    except Exception as e:
+        logger.error(f"❌ 任务执行失败: {e}", exc_info=True)
+        sys.exit(1)
+
+main = main_v2
 
 
 if __name__ == "__main__":

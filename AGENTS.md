@@ -2,7 +2,7 @@
 
 ## 项目概述
 - **名称**: RSS日报自动推送
-- **功能**: 从多个RSS源获取最新资讯，使用智谱AI生成结构化日报并推送到Telegram
+- **功能**: 从多个RSS源获取最新资讯，使用智谱AI生成结构化日报并推送到Telegram/Discord
 - **架构**: GitHub Actions + Python脚本
 
 ## 技术栈
@@ -22,7 +22,8 @@
 │   └── generate_report_llm_cfg.json  # GLM模型配置
 ├── scripts/
 │   ├── run_daily.py           # 主执行脚本
-│   └── test_telegram.py       # Telegram配置测试
+│   ├── test_telegram.py       # Telegram配置测试
+│   └── test_discord.py        # Discord配置测试
 ├── docs/                      # 文档
 └── requirements.txt           # Python依赖
 ```
@@ -74,6 +75,9 @@
 | `ZHIPUAI_API_KEY` | ✅ | 智谱AI API密钥 |
 | `TELEGRAM_BOT_TOKEN` | ✅ | Telegram机器人Token |
 | `TELEGRAM_CHAT_ID` | ✅ | 接收消息的Chat ID |
+| `DISCORD_WEBHOOK_URL` | ❌ | Discord Webhook URL |
+| `DISCORD_BOT_TOKEN` | ❌ | Discord机器人Token |
+| `DISCORD_CHANNEL_ID` | ❌ | Discord频道ID |
 | `HOURS_FILTER` | ❌ | 过滤最近N小时（默认24） |
 | `TELEGRAM_API_BASE_URL` | ❌ | Telegram代理服务器（默认使用代理） |
 
@@ -105,6 +109,8 @@
 1. `ZHIPUAI_API_KEY` - 智谱AI API Key
 2. `TELEGRAM_BOT_TOKEN` - Telegram Bot Token
 3. `TELEGRAM_CHAT_ID` - Telegram Chat ID
+4. `DISCORD_WEBHOOK_URL` - Discord Webhook URL（可选）
+5. `DISCORD_BOT_TOKEN` / `DISCORD_CHANNEL_ID` - Discord Bot配置（可选）
 
 ### 定时任务
 
@@ -122,7 +128,7 @@
    ├── 获取RSS文章
    ├── 过滤最近24小时
    ├── 调用智谱AI生成日报
-   └── 推送到Telegram
+   └── 推送到Telegram/Discord
 ```
 
 ## 本地开发
@@ -141,6 +147,10 @@ pip install zhipuai
 export TELEGRAM_BOT_TOKEN="your_token"
 export TELEGRAM_CHAT_ID="your_chat_id"
 python scripts/test_telegram.py
+
+# 测试Discord配置
+export DISCORD_WEBHOOK_URL="your_webhook_url"
+python scripts/test_discord.py
 
 # 运行完整流程
 export ZHIPUAI_API_KEY="your_api_key"

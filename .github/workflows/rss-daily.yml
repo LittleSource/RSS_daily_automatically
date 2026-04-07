@@ -30,6 +30,9 @@ jobs:
           ZHIPUAI_API_KEY: ${{ secrets.ZHIPUAI_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_CHANNEL_ID: ${{ secrets.DISCORD_CHANNEL_ID }}
           HOURS_FILTER: ${{ vars.HOURS_FILTER || '24' }}
         run: |
           echo "🚀 开始执行RSS日报推送..."
@@ -47,6 +50,9 @@ jobs:
           echo "   - ZHIPUAI_API_KEY（智谱AI API密钥）"
           echo "   - TELEGRAM_BOT_TOKEN"
           echo "   - TELEGRAM_CHAT_ID"
+          echo "   - DISCORD_WEBHOOK_URL"
+          echo "   - DISCORD_BOT_TOKEN"
+          echo "   - DISCORD_CHANNEL_ID"
           echo ""
           echo "2. 查看上方日志了解具体错误"
           echo ""
@@ -54,4 +60,5 @@ jobs:
           echo "   export ZHIPUAI_API_KEY='your_api_key'"
           echo "   export TELEGRAM_BOT_TOKEN='your_token'"
           echo "   export TELEGRAM_CHAT_ID='your_chat_id'"
+          echo "   export DISCORD_WEBHOOK_URL='your_webhook_url'"
           echo "   python scripts/run_daily.py"
