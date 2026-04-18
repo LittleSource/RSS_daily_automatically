@@ -39,6 +39,7 @@ RSS_SOURCES = [
     "https://rsshub.52ym.vip/twitter/user/EmberCN/readable=0&showEmojiForRetweetAndReply=1"
     # 其他
     "https://rsshub.52ym.vip/bilibili/user/dynamic/285286947/showEmoji=1",
+    "https://imjuya.github.io/juya-ai-daily/rss.xml"
 ]
 
 # 代理服务器配置
@@ -285,7 +286,7 @@ def html_to_telegraph_nodes(html: str) -> List[Any]:
     def element_to_node(element):
         if isinstance(element, NavigableString):
             return str(element)
-        
+
         if not hasattr(element, 'name'):
             return None
 
@@ -323,7 +324,7 @@ def html_to_telegraph_nodes(html: str) -> List[Any]:
             return children
 
         node = {"tag": tag, "children": []}
-        
+
         # 属性处理
         if element.attrs:
             allowed_attrs = ["href", "src"]
@@ -365,7 +366,7 @@ def html_to_telegraph_nodes(html: str) -> List[Any]:
                         node["children"].extend(child_node)
                     else:
                         node["children"].append(child_node)
-        
+
         if not node["children"]:
             del node["children"]
 
@@ -449,7 +450,7 @@ def send_to_telegram(message: str) -> Dict[str, Any]:
 
     # 构建API URL
     api_url = f"{TELEGRAM_API_BASE_URL}/bot{bot_token}/sendMessage"
-    
+
     payload = {
         "chat_id": chat_id,
         "text": message,
