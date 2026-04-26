@@ -31,21 +31,22 @@
 2. 搜索 `@userinfobot` 获取Chat ID
 3. 详细教程：[Telegram配置教程](docs/telegram_setup.md)
 
-### 3. 配置GitHub Secrets
+### 3. 配置 GitHub Secrets / Variables
 
-进入仓库 `Settings` → `Secrets and variables` → `Actions` → `New repository secret`
+进入仓库 `Settings` → `Secrets and variables` → `Actions`，按需新增 Repository secret / variable
 
-| Secret名称 | 说明 |
-|-----------|------|
-| `ZHIPUAI_API_KEY` | 智谱AI API Key |
-| `TELEGRAM_BOT_TOKEN` | Telegram Bot Token |
-| `TELEGRAM_CHAT_ID` | 接收消息的Chat ID |
-| `DISCORD_WEBHOOK_URL` | Discord Webhook URL，可选 |
-| `DISCORD_BOT_TOKEN` | Discord Bot Token，可选 |
-| `DISCORD_CHANNEL_ID` | Discord Channel ID，可选 |
-| `GEWE_TOKEN` | GeWe 鉴权 Token，可选 |
-| `GEWE_APP_ID` | GeWe appId，可选 |
-| `WECHAT_TO_WXID` | 微信接收方 wxid/群id，可选 |
+| 配置项 | 类型 | 说明 |
+|--------|------|------|
+| `PUSH_CHANNEL` | Variable | 推送渠道：`telegram` / `discord` / `wechat` |
+| `ZHIPUAI_API_KEY` | Secret | 智谱AI API Key |
+| `TELEGRAM_BOT_TOKEN` | Secret | Telegram Bot Token |
+| `TELEGRAM_CHAT_ID` | Secret | 接收消息的Chat ID |
+| `DISCORD_WEBHOOK_URL` | Secret | Discord Webhook URL，可选 |
+| `DISCORD_BOT_TOKEN` | Secret | Discord Bot Token，可选 |
+| `DISCORD_CHANNEL_ID` | Secret | Discord Channel ID，可选 |
+| `GEWE_TOKEN` | Secret | GeWe 鉴权 Token，可选 |
+| `GEWE_APP_ID` | Secret | GeWe appId，可选 |
+| `WECHAT_TO_WXID` | Secret | 微信接收方 wxid/群id，可选 |
 
 ### 4. 启用GitHub Actions
 
@@ -70,6 +71,7 @@ pip install zhipuai
 
 ```bash
 export ZHIPUAI_API_KEY="your_api_key"
+export PUSH_CHANNEL="wechat"
 export TELEGRAM_BOT_TOKEN="your_bot_token"
 export TELEGRAM_CHAT_ID="your_chat_id"
 export DISCORD_WEBHOOK_URL="your_discord_webhook_url"  # 可选
@@ -134,7 +136,7 @@ RSS获取 (22个源并发)
     ↓
 智谱AI生成日报
     ↓
-多通道推送（Telegram / Discord / 微信）
+按 PUSH_CHANNEL 推送到指定渠道（Telegram / Discord / 微信）
 ```
 
 ## 📖 RSS源列表

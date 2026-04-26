@@ -46,14 +46,39 @@ RSS_SOURCES = [
     "https://imjuya.github.io/juya-ai-daily/rss.xml"
 ]
 
+SUPPORTED_PUSH_CHANNELS = ("telegram", "discord", "wechat")
+
+
+def get_selected_push_channel() -> str:
+    """
+    获取当前显式指定的推送渠道。
+    """
+    push_channel = os.getenv("PUSH_CHANNEL", "").strip().lower()
+
+    if not push_channel:
+        raise ValueError(
+            "未设置 PUSH_CHANNEL 环境变量：请显式指定 telegram、discord 或 wechat"
+        )
+
+    if push_channel not in SUPPORTED_PUSH_CHANNELS:
+        raise ValueError(
+            "无效的 PUSH_CHANNEL 环境变量："
+            f"{push_channel}。仅支持 telegram、discord 或 wechat"
+        )
+
+    return push_channel
+
+
 def get_push_channel_status() -> Dict[str, bool]:
     """
-    检查推送通道配置状态。
+    检查显式指定的推送通道配置状态。
     """
+    push_channel = get_selected_push_channel()
+
     telegram_status = get_telegram_config_status()
     telegram_any = telegram_status["any"]
     telegram_ready = telegram_status["ready"]
-    if telegram_any and not telegram_ready:
+    if push_channel == "telegram" and telegram_any and not telegram_ready:
         raise ValueError(
             "Telegram 配置不完整：请同时设置 TELEGRAM_BOT_TOKEN 和 TELEGRAM_CHAT_ID"
         )
@@ -61,7 +86,7 @@ def get_push_channel_status() -> Dict[str, bool]:
     discord_status = get_discord_config_status()
     discord_any = discord_status["any"]
     discord_ready = discord_status["ready"]
-    if discord_any and not discord_ready:
+    if push_channel == "discord" and discord_any and not discord_ready:
         raise ValueError(
             "Discord 配置不完整：请设置 DISCORD_WEBHOOK_URL，或同时设置 DISCORD_BOT_TOKEN 和 DISCORD_CHANNEL_ID"
         )
@@ -69,20 +94,33 @@ def get_push_channel_status() -> Dict[str, bool]:
     wechat_status = get_wechat_config_status()
     wechat_any = wechat_status["any"]
     wechat_ready = wechat_status["ready"]
-    if wechat_any and not wechat_ready:
+    if push_channel == "wechat" and wechat_any and not wechat_ready:
         raise ValueError(
             "微信配置不完整：请同时设置 GEWE_TOKEN、GEWE_APP_ID 和 WECHAT_TO_WXID"
         )
 
-    if not telegram_ready and not discord_ready and not wechat_ready:
+    if push_channel == "telegram" and not telegram_ready:
         raise ValueError(
-            "未检测到可用推送通道：请配置 Telegram、Discord 或 微信(GeWe) 的环境变量"
+            "PUSH_CHANNEL=telegram，但未检测到完整 Telegram 配置："
+            "请设置 TELEGRAM_BOT_TOKEN 和 TELEGRAM_CHAT_ID"
+        )
+
+    if push_channel == "discord" and not discord_ready:
+        raise ValueError(
+            "PUSH_CHANNEL=discord，但未检测到完整 Discord 配置："
+            "请设置 DISCORD_WEBHOOK_URL，或同时设置 DISCORD_BOT_TOKEN 和 DISCORD_CHANNEL_ID"
+        )
+
+    if push_channel == "wechat" and not wechat_ready:
+        raise ValueError(
+            "PUSH_CHANNEL=wechat，但未检测到完整微信配置："
+            "请设置 GEWE_TOKEN、GEWE_APP_ID 和 WECHAT_TO_WXID"
         )
 
     return {
-        "telegram": telegram_ready,
-        "discord": discord_ready,
-        "wechat": wechat_ready,
+        "telegram": push_channel == "telegram" and telegram_ready,
+        "discord": push_channel == "discord" and discord_ready,
+        "wechat": push_channel == "wechat" and wechat_ready,
     }
 
 
@@ -507,8 +545,9 @@ def send_notifications(
     telegram_message: str, discord_message: str, wechat_message: str
 ) -> Dict[str, Dict[str, Any]]:
     """
-    发送消息到所有已配置的推送通道。
+    发送消息到显式指定的推送通道。
     """
+    push_channel = get_selected_push_channel()
     channel_status = get_push_channel_status()
     results: Dict[str, Dict[str, Any]] = {}
 
@@ -521,6 +560,7 @@ def send_notifications(
     if channel_status["wechat"]:
         results["wechat"] = send_to_wechat(wechat_message)
 
+    logger.info(f"当前推送渠道: {push_channel}")
     return results
 
 
