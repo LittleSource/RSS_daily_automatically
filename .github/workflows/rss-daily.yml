@@ -34,6 +34,9 @@ jobs:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORD_CHANNEL_ID: ${{ secrets.DISCORD_CHANNEL_ID }}
+          GEWE_TOKEN: ${{ secrets.GEWE_TOKEN }}
+          GEWE_APP_ID: ${{ secrets.GEWE_APP_ID }}
+          WECHAT_TO_WXID: ${{ secrets.WECHAT_TO_WXID }}
           HOURS_FILTER: ${{ vars.HOURS_FILTER || '24' }}
         run: |
           echo "🚀 开始执行RSS日报推送..."
