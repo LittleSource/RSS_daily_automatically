@@ -7,6 +7,7 @@ RSS日报推送 - 独立执行脚本
 import json
 import logging
 import os
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List
@@ -16,6 +17,9 @@ import requests
 from bs4 import BeautifulSoup, NavigableString
 from dateutil import parser as date_parser
 from markdown import markdown
+from discord_sender import get_discord_config_status, send_to_discord
+from telegram_sender import get_telegram_config_status, send_to_telegram
+from wechat_sender import get_wechat_config_status, send_to_wechat
 
 # 配置日志
 logging.basicConfig(
@@ -42,42 +46,44 @@ RSS_SOURCES = [
     "https://imjuya.github.io/juya-ai-daily/rss.xml"
 ]
 
-# 代理服务器配置
-TELEGRAM_API_BASE_URL = os.getenv("TELEGRAM_API_BASE_URL", "https://api.telegram.org")
-DISCORD_API_BASE_URL = os.getenv("DISCORD_API_BASE_URL", "https://discord.com/api/v10")
-
-
 def get_push_channel_status() -> Dict[str, bool]:
     """
     检查推送通道配置状态。
     """
-    telegram_bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
-    telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID")
-    telegram_any = bool(telegram_bot_token or telegram_chat_id)
-    telegram_ready = bool(telegram_bot_token and telegram_chat_id)
+    telegram_status = get_telegram_config_status()
+    telegram_any = telegram_status["any"]
+    telegram_ready = telegram_status["ready"]
     if telegram_any and not telegram_ready:
         raise ValueError(
             "Telegram 配置不完整：请同时设置 TELEGRAM_BOT_TOKEN 和 TELEGRAM_CHAT_ID"
         )
 
-    discord_webhook_url = os.getenv("DISCORD_WEBHOOK_URL")
-    discord_bot_token = os.getenv("DISCORD_BOT_TOKEN")
-    discord_channel_id = os.getenv("DISCORD_CHANNEL_ID")
-    discord_any = bool(discord_webhook_url or discord_bot_token or discord_channel_id)
-    discord_ready = bool(discord_webhook_url) or bool(
-        discord_bot_token and discord_channel_id
-    )
+    discord_status = get_discord_config_status()
+    discord_any = discord_status["any"]
+    discord_ready = discord_status["ready"]
     if discord_any and not discord_ready:
         raise ValueError(
             "Discord 配置不完整：请设置 DISCORD_WEBHOOK_URL，或同时设置 DISCORD_BOT_TOKEN 和 DISCORD_CHANNEL_ID"
         )
 
-    if not telegram_ready and not discord_ready:
+    wechat_status = get_wechat_config_status()
+    wechat_any = wechat_status["any"]
+    wechat_ready = wechat_status["ready"]
+    if wechat_any and not wechat_ready:
         raise ValueError(
-            "未检测到可用推送通道：请配置 Telegram 或 Discord 的环境变量"
+            "微信配置不完整：请同时设置 GEWE_TOKEN、GEWE_APP_ID 和 WECHAT_TO_WXID"
         )
 
-    return {"telegram": telegram_ready, "discord": discord_ready}
+    if not telegram_ready and not discord_ready and not wechat_ready:
+        raise ValueError(
+            "未检测到可用推送通道：请配置 Telegram、Discord 或 微信(GeWe) 的环境变量"
+        )
+
+    return {
+        "telegram": telegram_ready,
+        "discord": discord_ready,
+        "wechat": wechat_ready,
+    }
 
 
 def build_telegram_report_message(today: str, article_count: int, telegraph_url: str) -> str:
@@ -105,6 +111,17 @@ def build_discord_report_message(today: str, article_count: int, telegraph_url: 
     )
 
 
+def build_wechat_report_message(today: str, article_count: int, telegraph_url: str) -> str:
+    """
+    构建微信日报消息。
+    """
+    return (
+        f"📰 {today} | 资讯日报已生成\n\n"
+        f"📌 今日共收录 {article_count} 篇文章。\n\n"
+        f"🔗 完整日报：{telegraph_url}"
+    )
+
+
 def build_telegram_empty_message(hours_filter: int) -> str:
     """
     构建 Telegram 无更新提示。
@@ -125,6 +142,17 @@ def build_discord_empty_message(hours_filter: int) -> str:
     return (
         "## 📰 今日资讯日报\n\n"
         f"⚠️ 最近 **{hours_filter}** 小时暂无新文章更新。\n\n"
+        "请检查 RSS 源是否正常。"
+    )
+
+
+def build_wechat_empty_message(hours_filter: int) -> str:
+    """
+    构建微信无更新提示。
+    """
+    return (
+        "📰 今日资讯日报\n\n"
+        f"⚠️ 最近 {hours_filter} 小时暂无新文章更新。\n\n"
         "请检查 RSS 源是否正常。"
     )
 
@@ -248,7 +276,7 @@ def call_llm_generate_report(articles: List[Dict[str, Any]]) -> str:
 4. 总结今日亮点和趋势
 5. 使用emoji增加可读性
 6. 输出Markdown格式，使用合适的标题和列表
-7. 有序列表必须写成 `1. 内容` 的单行格式，序号和内容之间不要换行
+7. “🔥 热门推荐”部分不要使用任何数字序号，使用无序列表或单独换行展示即可
 """
 
     # 调用智谱AI API
@@ -383,6 +411,46 @@ def html_to_telegraph_nodes(html: str) -> List[Any]:
     return [n for n in nodes if n]
 
 
+def normalize_report_markdown(md_content: str) -> str:
+    """
+    规范化日报 Markdown，去掉热门推荐中的序号。
+    """
+    lines = md_content.splitlines()
+    normalized_lines: List[str] = []
+    in_hot_section = False
+
+    for line in lines:
+        stripped = line.strip()
+
+        if stripped.startswith("🔥 热门推荐"):
+            in_hot_section = True
+            normalized_lines.append(line)
+            continue
+
+        if in_hot_section and (
+            stripped.startswith("#")
+            or stripped.startswith("📚 ")
+            or stripped.startswith("💡 ")
+            or stripped.startswith("今日亮点")
+        ):
+            in_hot_section = False
+
+        if in_hot_section and stripped:
+            stripped = re.sub(r"^\d+\.\s*", "", stripped)
+            stripped = re.sub(r"^\d+[、.)]\s*", "", stripped)
+            stripped = re.sub(
+                r"^(?:\d️⃣|🔟|[①②③④⑤⑥⑦⑧⑨⑩]|[1-9][\uFE0F\u20E3])\s*",
+                "",
+                stripped,
+            )
+            stripped = re.sub(r"^[-*+]\s*", "", stripped)
+            line = f"• {stripped}"
+
+        normalized_lines.append(line)
+
+    return "\n".join(normalized_lines)
+
+
 def upload_to_telegraph(title: str, md_content: str) -> str:
     """
     将Markdown内容上传到Telegraph
@@ -390,6 +458,8 @@ def upload_to_telegraph(title: str, md_content: str) -> str:
     logger.info("开始上传到Telegraph...")
 
     try:
+        md_content = normalize_report_markdown(md_content)
+
         # 1. 将Markdown转换为HTML
         html_content = markdown(md_content, extensions=["extra", "sane_lists"])
 
@@ -433,94 +503,9 @@ def upload_to_telegraph(title: str, md_content: str) -> str:
         raise
 
 
-def send_to_telegram(message: str) -> Dict[str, Any]:
-    """
-    发送消息到Telegram
-    """
-    logger.info("开始发送到Telegram...")
-
-    # 获取环境变量
-    bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
-    chat_id = os.getenv("TELEGRAM_CHAT_ID")
-
-    if not bot_token or not chat_id:
-        raise ValueError(
-            "缺少Telegram配置：请设置 TELEGRAM_BOT_TOKEN 和 TELEGRAM_CHAT_ID 环境变量"
-        )
-
-    # 构建API URL
-    api_url = f"{TELEGRAM_API_BASE_URL}/bot{bot_token}/sendMessage"
-
-    payload = {
-        "chat_id": chat_id,
-        "text": message,
-        "parse_mode": "HTML",
-        "disable_web_page_preview": False,
-    }
-
-    try:
-        response = requests.post(api_url, json=payload, timeout=30)
-        if response.status_code != 200:
-            logger.error(f"Telegram API 报错详情: {response.text}")
-        response.raise_for_status()
-        result = response.json()
-
-        if result.get("ok"):
-            logger.info("✅ Telegram 推送成功")
-            return {"success": True, "message_id": result["result"]["message_id"]}
-        else:
-            logger.error(f"Telegram推送失败: {result}")
-            return {
-                "success": False,
-                "error": result.get("description", "Unknown error"),
-            }
-    except Exception as e:
-        logger.error(f"Telegram推送异常: {e}")
-        raise
-
-
-def send_to_discord(message: str) -> Dict[str, Any]:
-    """
-    发送消息到 Discord。
-    """
-    logger.info("开始发送到Discord...")
-
-    webhook_url = os.getenv("DISCORD_WEBHOOK_URL")
-    bot_token = os.getenv("DISCORD_BOT_TOKEN")
-    channel_id = os.getenv("DISCORD_CHANNEL_ID")
-
-    headers = {"Content-Type": "application/json"}
-    payload = {"content": message}
-
-    if webhook_url:
-        api_url = webhook_url
-    elif bot_token and channel_id:
-        api_url = f"{DISCORD_API_BASE_URL}/channels/{channel_id}/messages"
-        headers["Authorization"] = f"Bot {bot_token}"
-    else:
-        raise ValueError(
-            "缺少Discord配置：请设置 DISCORD_WEBHOOK_URL，或同时设置 DISCORD_BOT_TOKEN 和 DISCORD_CHANNEL_ID"
-        )
-
-    try:
-        response = requests.post(api_url, json=payload, headers=headers, timeout=30)
-        if response.status_code not in (200, 204):
-            logger.error(f"Discord API 报错详情: {response.text}")
-        response.raise_for_status()
-
-        if response.status_code == 204:
-            logger.info("✅ Discord 推送成功")
-            return {"success": True}
-
-        result = response.json()
-        logger.info("✅ Discord 推送成功")
-        return {"success": True, "message_id": result.get("id")}
-    except Exception as e:
-        logger.error(f"Discord推送异常: {e}")
-        raise
-
-
-def send_notifications(telegram_message: str, discord_message: str) -> Dict[str, Dict[str, Any]]:
+def send_notifications(
+    telegram_message: str, discord_message: str, wechat_message: str
+) -> Dict[str, Dict[str, Any]]:
     """
     发送消息到所有已配置的推送通道。
     """
@@ -532,6 +517,9 @@ def send_notifications(telegram_message: str, discord_message: str) -> Dict[str,
 
     if channel_status["discord"]:
         results["discord"] = send_to_discord(discord_message)
+
+    if channel_status["wechat"]:
+        results["wechat"] = send_to_wechat(wechat_message)
 
     return results
 
@@ -605,6 +593,7 @@ def main_v2():
             results = send_notifications(
                 build_telegram_empty_message(hours_filter),
                 build_discord_empty_message(hours_filter),
+                build_wechat_empty_message(hours_filter),
             )
             logger.info(f"空日报通知已发送: {', '.join(results.keys())}")
             return
@@ -618,6 +607,7 @@ def main_v2():
         results = send_notifications(
             build_telegram_report_message(today, len(articles), telegraph_url),
             build_discord_report_message(today, len(articles), telegraph_url),
+            build_wechat_report_message(today, len(articles), telegraph_url),
         )
 
         if all(result.get("success") for result in results.values()):

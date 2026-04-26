@@ -1,13 +1,13 @@
 # RSS日报自动推送
 
-从多个RSS源获取最新资讯，生成结构化日报并推送到Telegram/Discord。
+从多个RSS源获取最新资讯，生成结构化日报并推送到Telegram/Discord/微信。
 
 ## 🎯 特性
 
 - ✅ **多源聚合**：支持22个RSS源并发获取
 - ✅ **智能过滤**：自动过滤最近N小时的内容
 - ✅ **AI生成**：使用智谱AI GLM模型生成结构化日报
-- ✅ **自动推送**：定时推送到Telegram
+- ✅ **自动推送**：支持 Telegram / Discord / 微信(GeWe)
 - ✅ **零成本**：基于GitHub Actions + GLM-4-Flash，完全免费
 
 ## 🚀 快速开始
@@ -43,6 +43,9 @@
 | `DISCORD_WEBHOOK_URL` | Discord Webhook URL，可选 |
 | `DISCORD_BOT_TOKEN` | Discord Bot Token，可选 |
 | `DISCORD_CHANNEL_ID` | Discord Channel ID，可选 |
+| `GEWE_TOKEN` | GeWe 鉴权 Token，可选 |
+| `GEWE_APP_ID` | GeWe appId，可选 |
+| `WECHAT_TO_WXID` | 微信接收方 wxid/群id，可选 |
 
 ### 4. 启用GitHub Actions
 
@@ -70,6 +73,9 @@ export ZHIPUAI_API_KEY="your_api_key"
 export TELEGRAM_BOT_TOKEN="your_bot_token"
 export TELEGRAM_CHAT_ID="your_chat_id"
 export DISCORD_WEBHOOK_URL="your_discord_webhook_url"  # 可选
+export GEWE_TOKEN="your_gewe_token"  # 可选
+export GEWE_APP_ID="your_gewe_app_id"  # 可选
+export WECHAT_TO_WXID="your_wechat_wxid"  # 可选
 export HOURS_FILTER="24"  # 可选
 ```
 
@@ -91,6 +97,12 @@ python scripts/test_telegram.py
 python scripts/test_discord.py
 ```
 
+### 测试微信配置
+
+```bash
+python scripts/test_wechat.py
+```
+
 ## 📁 项目结构
 
 ```
@@ -103,7 +115,8 @@ python scripts/test_discord.py
 ├── scripts/
 │   ├── run_daily.py           # 主执行脚本
 │   ├── test_telegram.py       # Telegram配置测试
-│   └── test_discord.py        # Discord配置测试
+│   ├── test_discord.py        # Discord配置测试
+│   └── test_wechat.py         # 微信配置测试
 ├── docs/                      # 文档
 └── requirements.txt           # Python依赖
 ```
@@ -121,7 +134,7 @@ RSS获取 (22个源并发)
     ↓
 智谱AI生成日报
     ↓
-Telegram推送
+多通道推送（Telegram / Discord / 微信）
 ```
 
 ## 📖 RSS源列表
