@@ -14,9 +14,7 @@ from typing import Any, Dict, List
 
 import feedparser
 import requests
-from bs4 import BeautifulSoup, NavigableString
 from dateutil import parser as date_parser
-from markdown import markdown
 from discord_sender import get_discord_config_status, send_to_discord
 from telegram_sender import get_telegram_config_status, send_to_telegram
 from wechat_sender import get_wechat_config_status, send_to_wechat
@@ -43,7 +41,7 @@ RSS_SOURCES = [
     "https://rsshub.52ym.vip/twitter/user/EmberCN/readable=0&showEmojiForRetweetAndReply=1"
     # 其他
     "https://rsshub.52ym.vip/bilibili/user/dynamic/285286947/showEmoji=1",
-    "https://imjuya.github.io/juya-ai-daily/rss.xml"
+    "https://imjuya.github.io/juya-ai-daily/rss.xml",
 ]
 
 SUPPORTED_PUSH_CHANNELS = ("telegram", "discord", "wechat")
@@ -124,7 +122,9 @@ def get_push_channel_status() -> Dict[str, bool]:
     }
 
 
-def build_telegram_report_message(today: str, article_count: int, telegraph_url: str) -> str:
+def build_telegram_report_message(
+    today: str, article_count: int, report_url: str
+) -> str:
     """
     构建 Telegram 日报消息。
     """
@@ -134,29 +134,31 @@ def build_telegram_report_message(today: str, article_count: int, telegraph_url:
 📌 今日共收录 {article_count} 篇文章。
 
 🔗 <b>完整日报查看：</b>
-{telegraph_url}
+{report_url}
 """.strip()
 
 
-def build_discord_report_message(today: str, article_count: int, telegraph_url: str) -> str:
+def build_discord_report_message(
+    today: str, article_count: int, report_url: str
+) -> str:
     """
     构建 Discord 日报消息。
     """
     return (
         f"## 📰 {today} | 资讯日报已生成\n\n"
         f"📌 今日共收录 **{article_count}** 篇文章。\n\n"
-        f"🔗 完整日报：{telegraph_url}"
+        f"🔗 完整日报：{report_url}"
     )
 
 
-def build_wechat_report_message(today: str, article_count: int, telegraph_url: str) -> str:
+def build_wechat_report_message(today: str, article_count: int, report_url: str) -> str:
     """
     构建微信日报消息。
     """
     return (
         f"📰 {today} | 资讯日报已生成\n\n"
         f"📌 今日共收录 {article_count} 篇文章。\n\n"
-        f"🔗 完整日报：{telegraph_url}"
+        f"🔗 完整日报：{report_url}"
     )
 
 
@@ -343,112 +345,6 @@ def call_llm_generate_report(articles: List[Dict[str, Any]]) -> str:
         raise
 
 
-def html_to_telegraph_nodes(html: str) -> List[Any]:
-    """
-    将HTML字符串转换为Telegraph API所需的Node格式
-    """
-    soup = BeautifulSoup(html, "html.parser")
-
-    def element_to_node(element):
-        if isinstance(element, NavigableString):
-            return str(element)
-
-        if not hasattr(element, 'name'):
-            return None
-
-        # Telegraph 只支持特定的标签
-        supported_tags = [
-            "a", "aside", "b", "blockquote", "br", "code", "em",
-            "figcaption", "figure", "h3", "h4", "hr", "i", "iframe",
-            "img", "li", "ol", "p", "pre", "s", "strong", "u", "ul", "video"
-        ]
-
-        tag = element.name
-        if tag in ["h1", "h2"]:
-            tag = "h3"
-        elif tag == "span" or tag == "div":
-            # 对于不支持的容器标签，扁平化处理其子节点
-            children = []
-            for child in element.children:
-                child_node = element_to_node(child)
-                if child_node:
-                    if isinstance(child_node, list):
-                        children.extend(child_node)
-                    else:
-                        children.append(child_node)
-            return children
-        elif tag not in supported_tags:
-            # 同样扁平化处理其他不支持的标签
-            children = []
-            for child in element.children:
-                child_node = element_to_node(child)
-                if child_node:
-                    if isinstance(child_node, list):
-                        children.extend(child_node)
-                    else:
-                        children.append(child_node)
-            return children
-
-        node = {"tag": tag, "children": []}
-
-        # 属性处理
-        if element.attrs:
-            allowed_attrs = ["href", "src"]
-            attrs = {k: v for k, v in element.attrs.items() if k in allowed_attrs}
-            if attrs:
-                node["attrs"] = attrs
-
-        # Telegraph 对 li > p 的渲染会把序号和正文拆开显示，这里把段落拍平成同一项。
-        if tag == "li":
-            paragraph_count = 0
-            for child in element.children:
-                if getattr(child, "name", None) == "p":
-                    if paragraph_count > 0 and node["children"]:
-                        node["children"].append({"tag": "br"})
-                        node["children"].append({"tag": "br"})
-
-                    for paragraph_child in child.children:
-                        paragraph_node = element_to_node(paragraph_child)
-                        if paragraph_node:
-                            if isinstance(paragraph_node, list):
-                                node["children"].extend(paragraph_node)
-                            else:
-                                node["children"].append(paragraph_node)
-                    paragraph_count += 1
-                    continue
-
-                child_node = element_to_node(child)
-                if child_node:
-                    if isinstance(child_node, list):
-                        node["children"].extend(child_node)
-                    else:
-                        node["children"].append(child_node)
-        else:
-            # 子节点处理
-            for child in element.children:
-                child_node = element_to_node(child)
-                if child_node:
-                    if isinstance(child_node, list):
-                        node["children"].extend(child_node)
-                    else:
-                        node["children"].append(child_node)
-
-        if not node["children"]:
-            del node["children"]
-
-        return node
-
-    nodes = []
-    for child in soup.children:
-        node = element_to_node(child)
-        if isinstance(node, list):
-            nodes.extend(node)
-        elif node:
-            nodes.append(node)
-
-    return [n for n in nodes if n]
-
-
 def normalize_report_markdown(md_content: str) -> str:
     """
     规范化日报 Markdown，去掉热门推荐中的序号。
@@ -489,55 +385,38 @@ def normalize_report_markdown(md_content: str) -> str:
     return "\n".join(normalized_lines)
 
 
-def upload_to_telegraph(title: str, md_content: str) -> str:
+def upload_to_writeas(title: str, md_content: str) -> str:
     """
-    将Markdown内容上传到Telegraph
+    将 Markdown 内容上传到 Write.as，并返回原始 Markdown 页面地址。
     """
-    logger.info("开始上传到Telegraph...")
+    logger.info("开始上传到Write.as...")
 
     try:
-        md_content = normalize_report_markdown(md_content)
+        # md_content = normalize_report_markdown(md_content)
 
-        # 1. 将Markdown转换为HTML
-        html_content = markdown(md_content, extensions=["extra", "sane_lists"])
+        response = requests.post(
+            "https://write.as/api/posts",
+            headers={"Content-Type": "application/json"},
+            json={"title": title, "body": md_content},
+            timeout=30,
+        )
+        response.raise_for_status()
+        page_res = response.json()
 
-        # 2. 将HTML转换为Telegraph Nodes
-        nodes = html_to_telegraph_nodes(html_content)
+        if page_res.get("code") != 201:
+            logger.error(f"Write.as页面创建失败: {page_res}")
+            raise ValueError(f"Write.as API 错误: {page_res}")
 
-        # 3. 获取或创建Access Token
-        access_token = os.getenv("TELEGRAPH_ACCESS_TOKEN")
-        if not access_token:
-            logger.info("未找到 TELEGRAPH_ACCESS_TOKEN，正在创建临时账号...")
-            acc_res = requests.get(
-                "https://api.telegra.ph/createAccount",
-                params={"short_name": "RSSDaily", "author_name": "RSS Daily Bot"},
-            ).json()
-            if not acc_res.get("ok"):
-                raise ValueError(f"创建Telegraph账号失败: {acc_res}")
-            access_token = acc_res["result"]["access_token"]
-            logger.info("临时账号创建成功")
+        url = page_res.get("data", {}).get("url")
+        if not url:
+            logger.error(f"Write.as返回缺少URL: {page_res}")
+            raise ValueError("Write.as API 未返回页面地址")
 
-        # 4. 创建页面
-        page_res = requests.post(
-            "https://api.telegra.ph/createPage",
-            data={
-                "access_token": access_token,
-                "title": title,
-                "content": json.dumps(nodes),
-                "return_content": "false",
-            },
-        ).json()
-
-        if page_res.get("ok"):
-            url = page_res["result"]["url"]
-            logger.info(f"Telegraph页面创建成功: {url}")
-            return url
-        else:
-            logger.error(f"Telegraph页面创建失败: {page_res}")
-            raise ValueError(f"Telegraph API 错误: {page_res.get('error')}")
+        logger.info(f"Write.as页面创建成功: {url}")
+        return url
 
     except Exception as e:
-        logger.error(f"上传到Telegraph失败: {e}")
+        logger.error(f"上传到Write.as失败: {e}")
         raise
 
 
@@ -565,60 +444,6 @@ def send_notifications(
 
 
 def main():
-    """主函数"""
-    logger.info("=" * 50)
-    logger.info("RSS日报推送任务开始")
-    logger.info("=" * 50)
-
-    try:
-        # 1. 获取RSS文章
-        hours_filter = int(os.getenv("HOURS_FILTER", "24"))
-        articles = fetch_rss_feeds(hours_filter)
-
-        if not articles:
-            logger.warning("⚠️ 未获取到任何文章，可能是时间范围内无更新")
-            # 发送提示消息
-            send_to_telegram(
-                f"<b>📅 今日资讯日报</b>\n\n"
-                f"⚠️ 最近{hours_filter}小时暂无新文章更新\n\n"
-                f"请检查RSS源是否正常"
-            )
-            return
-
-        # 2. 生成日报 (Markdown格式)
-        report_md = call_llm_generate_report(articles)
-
-        # 3. 上传到Telegraph
-        today = datetime.now().strftime("%Y年%m月%d日")
-        title = f"{today} | 资讯日报"
-        telegraph_url = upload_to_telegraph(title, report_md)
-
-        # 4. 格式化并发送到Telegram (使用文本发送URL)
-        tg_message = f"""
-<b>📅 {today} | 资讯日报已生成</b>
-
-🚀 今日共收录 {len(articles)} 篇文章。
-
-🔗 <b>完整日报查看：</b>
-{telegraph_url}
-"""
-        result = send_to_telegram(tg_message)
-
-        if result.get("success"):
-            logger.info("=" * 50)
-            logger.info("✅ RSS日报推送成功！")
-            logger.info(f"📊 文章数: {len(articles)}")
-            logger.info(f"🔗 Telegraph URL: {telegraph_url}")
-            logger.info("=" * 50)
-        else:
-            logger.error(f"❌ 推送失败: {result.get('error')}")
-            sys.exit(1)
-
-    except Exception as e:
-        logger.error(f"❌ 任务执行失败: {e}", exc_info=True)
-        sys.exit(1)
-
-def main_v2():
     """主函数。"""
     logger.info("=" * 50)
     logger.info("RSS日报推送任务开始")
@@ -642,19 +467,19 @@ def main_v2():
 
         today = datetime.now().strftime("%Y年%m月%d日")
         title = f"{today} | 资讯日报"
-        telegraph_url = upload_to_telegraph(title, report_md)
+        report_url = upload_to_writeas(title, report_md)
 
         results = send_notifications(
-            build_telegram_report_message(today, len(articles), telegraph_url),
-            build_discord_report_message(today, len(articles), telegraph_url),
-            build_wechat_report_message(today, len(articles), telegraph_url),
+            build_telegram_report_message(today, len(articles), report_url),
+            build_discord_report_message(today, len(articles), report_url),
+            build_wechat_report_message(today, len(articles), report_url),
         )
 
         if all(result.get("success") for result in results.values()):
             logger.info("=" * 50)
             logger.info("✅ RSS日报推送成功！")
             logger.info(f"📰 文章数: {len(articles)}")
-            logger.info(f"🔗 Telegraph URL: {telegraph_url}")
+            logger.info(f"🔗 Write.as URL: {report_url}")
             logger.info(f"📨 推送通道: {', '.join(results.keys())}")
             logger.info("=" * 50)
         else:
@@ -664,8 +489,6 @@ def main_v2():
     except Exception as e:
         logger.error(f"❌ 任务执行失败: {e}", exc_info=True)
         sys.exit(1)
-
-main = main_v2
 
 
 if __name__ == "__main__":
