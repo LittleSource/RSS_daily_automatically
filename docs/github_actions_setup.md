@@ -15,6 +15,7 @@
 | Secret名称 | 说明 | 获取方式 |
 |-----------|------|---------|
 | `ZHIPUAI_API_KEY` | 智谱AI API密钥 | [智谱AI开放平台](https://open.bigmodel.cn/) |
+| `GIST_GITHUB_TOKEN` | GitHub Gist 发布令牌 | GitHub Personal Access Token |
 | `TELEGRAM_BOT_TOKEN` | Telegram机器人Token | [Telegram配置教程](./telegram_setup.md) |
 | `TELEGRAM_CHAT_ID` | 接收消息的Chat ID | [Telegram配置教程](./telegram_setup.md) |
 
@@ -30,13 +31,23 @@
 - ✅ 新用户赠送免费tokens
 - ✅ GLM-4-Flash模型免费使用
 
-### 3. 配置变量（可选）
+**获取 GitHub Gist Token：**
+
+1. 打开 GitHub 的 Personal access token 设置页面
+2. 创建一个可用于 Gist 的 token
+3. 如果使用 fine-grained token，请授予 `Gists` 的写权限
+4. 将生成的 token 保存为仓库 Secret `GIST_GITHUB_TOKEN`
+
+### 3. 配置变量
 
 在 `Variables` 标签页添加：
 
 | 变量名称 | 默认值 | 说明 |
 |---------|-------|------|
 | `HOURS_FILTER` | `24` | 过滤最近N小时的文章 |
+| `PUSH_CHANNEL` | `telegram` | 推送渠道：`telegram` / `discord` / `wechat` |
+| `GIST_PUBLIC` | `false` | 是否创建公开 Gist |
+| `GIST_FILENAME` | `rss-daily-YYYY-MM-DD.md` | 可选，自定义 Gist 文件名 |
 
 ### 4. 启用Actions
 
@@ -109,6 +120,8 @@ on:
 获取完成，共45篇文章
 开始调用智谱AI生成日报...
 日报生成成功
+开始上传到 GitHub Gist...
+GitHub Gist 创建成功: https://gist.github.com/...
 开始发送到Telegram...
 ✅ Telegram推送成功
 ==================================================
@@ -130,19 +143,25 @@ on:
    ```
    → 重新配置Secrets，确保名称完全一致
 
-2. **智谱AI调用失败**
+2. **Gist Token 配置错误**
+   ```
+   ❌ 缺少 GitHub Gist Token：请设置 GIST_GITHUB_TOKEN 环境变量
+   ```
+   → 在仓库 Secrets 中新增 `GIST_GITHUB_TOKEN`
+
+3. **智谱AI调用失败**
    ```
    ❌ 调用智谱AI失败: API key is invalid
    ```
    → 检查API Key是否正确，是否已过期
 
-3. **Telegram配置错误**
+4. **Telegram配置错误**
    ```
    ❌ 缺少Telegram配置：请设置 TELEGRAM_BOT_TOKEN 和 TELEGRAM_CHAT_ID 环境变量
    ```
    → 重新配置Telegram Secrets
 
-4. **Chat ID错误**
+5. **Chat ID错误**
    ```
    ❌ Telegram推送失败: Bad Request: chat not found
    ```
@@ -157,6 +176,8 @@ pip install zhipuai
 
 # 2. 设置环境变量
 export ZHIPUAI_API_KEY="your_api_key"
+export GIST_GITHUB_TOKEN="your_github_gist_token"
+export PUSH_CHANNEL="telegram"
 export TELEGRAM_BOT_TOKEN="your_token"
 export TELEGRAM_CHAT_ID="your_chat_id"
 export HOURS_FILTER="24"

@@ -39,6 +39,7 @@
 |--------|------|------|
 | `PUSH_CHANNEL` | Variable | 推送渠道：`telegram` / `discord` / `wechat` |
 | `ZHIPUAI_API_KEY` | Secret | 智谱AI API Key |
+| `GIST_GITHUB_TOKEN` | Secret | GitHub Gist 发布令牌，必需 |
 | `TELEGRAM_BOT_TOKEN` | Secret | Telegram Bot Token |
 | `TELEGRAM_CHAT_ID` | Secret | 接收消息的Chat ID |
 | `DISCORD_WEBHOOK_URL` | Secret | Discord Webhook URL，可选 |
@@ -47,6 +48,8 @@
 | `GEWE_TOKEN` | Secret | GeWe 鉴权 Token，可选 |
 | `GEWE_APP_ID` | Secret | GeWe appId，可选 |
 | `WECHAT_TO_WXID` | Secret | 微信接收方 wxid/群id，可选 |
+| `GIST_PUBLIC` | Variable | 可选，是否创建公开 Gist；默认 `false` |
+| `GIST_FILENAME` | Variable | 可选，自定义 Gist 文件名；默认 `rss-daily-YYYY-MM-DD.md` |
 
 ### 4. 启用GitHub Actions
 
@@ -71,6 +74,7 @@ pip install zhipuai
 
 ```bash
 export ZHIPUAI_API_KEY="your_api_key"
+export GIST_GITHUB_TOKEN="your_github_gist_token"
 export PUSH_CHANNEL="wechat"
 export TELEGRAM_BOT_TOKEN="your_bot_token"
 export TELEGRAM_CHAT_ID="your_chat_id"
@@ -78,6 +82,8 @@ export DISCORD_WEBHOOK_URL="your_discord_webhook_url"  # 可选
 export GEWE_TOKEN="your_gewe_token"  # 可选
 export GEWE_APP_ID="your_gewe_app_id"  # 可选
 export WECHAT_TO_WXID="your_wechat_wxid"  # 可选
+export GIST_PUBLIC="false"  # 可选，默认 false（secret gist）
+export GIST_FILENAME="rss-daily.md"  # 可选
 export HOURS_FILTER="24"  # 可选
 ```
 
@@ -135,6 +141,8 @@ RSS获取 (22个源并发)
 内容过滤 (最近24小时)
     ↓
 智谱AI生成日报
+    ↓
+发布到 GitHub Gist
     ↓
 按 PUSH_CHANNEL 推送到指定渠道（Telegram / Discord / 微信）
 ```
@@ -272,7 +280,7 @@ RSS获取 (22个源并发)
 <details>
 <summary>GitHub Actions执行失败？</summary>
 
-1. 检查Secrets是否正确配置（3个Secret）
+1. 检查 Secrets / Variables 是否正确配置
 2. 查看Actions日志了解具体错误
 3. 本地测试验证配置
 

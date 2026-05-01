@@ -385,38 +385,86 @@ def normalize_report_markdown(md_content: str) -> str:
     return "\n".join(normalized_lines)
 
 
-def upload_to_writeas(title: str, md_content: str) -> str:
+def parse_env_bool(env_name: str, default: bool = False) -> bool:
     """
-    将 Markdown 内容上传到 Write.as，并返回原始 Markdown 页面地址。
+    解析环境变量布尔值。
     """
-    logger.info("开始上传到Write.as...")
+    raw_value = os.getenv(env_name)
+    if raw_value is None:
+        return default
+
+    return raw_value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def build_gist_filename() -> str:
+    """
+    生成 Gist 文件名。
+    """
+    filename = os.getenv("GIST_FILENAME", "").strip()
+    if not filename:
+        filename = f"rss-daily-{datetime.now().strftime('%Y-%m-%d')}.md"
+
+    if not filename.endswith(".md"):
+        filename = f"{filename}.md"
+
+    if re.fullmatch(r"gistfile\d*", filename):
+        raise ValueError(
+            "GIST_FILENAME 不能使用 gistfile 或 gistfile123 这类名称，请换一个自定义文件名"
+        )
+
+    return filename
+
+
+def upload_to_github_gist(title: str, md_content: str) -> str:
+    """
+    将 Markdown 内容上传到 GitHub Gist，并返回可访问页面地址。
+    """
+    logger.info("开始上传到 GitHub Gist...")
 
     try:
-        # md_content = normalize_report_markdown(md_content)
+        access_token = os.getenv("GIST_GITHUB_TOKEN", "").strip()
+        if not access_token:
+            raise ValueError(
+                "缺少 GitHub Gist Token：请设置 GIST_GITHUB_TOKEN 环境变量"
+            )
+
+        filename = build_gist_filename()
+        is_public = parse_env_bool("GIST_PUBLIC", default=True)
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {access_token}",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
 
         response = requests.post(
-            "https://write.as/api/posts",
-            headers={"Content-Type": "application/json"},
-            json={"title": title, "body": md_content},
+            "https://api.github.com/gists",
+            headers=headers,
+            json={
+                "description": title,
+                "public": is_public,
+                "files": {filename: {"content": md_content}},
+            },
             timeout=30,
         )
-        response.raise_for_status()
-        page_res = response.json()
+        if response.status_code != 201:
+            error_message = response.text.strip()
+            logger.error(
+                f"GitHub Gist 创建失败: status={response.status_code}, body={error_message}"
+            )
+            raise ValueError(
+                f"GitHub Gist API 错误（HTTP {response.status_code}）: {error_message}"
+            )
 
-        if page_res.get("code") != 201:
-            logger.error(f"Write.as页面创建失败: {page_res}")
-            raise ValueError(f"Write.as API 错误: {page_res}")
-
-        url = page_res.get("data", {}).get("url")
+        gist_res = response.json()
+        url = (gist_res.get("html_url") or "").strip()
         if not url:
-            logger.error(f"Write.as返回缺少URL: {page_res}")
-            raise ValueError("Write.as API 未返回页面地址")
+            raise ValueError("GitHub Gist API 未返回 html_url")
 
-        logger.info(f"Write.as页面创建成功: {url}")
+        logger.info(f"GitHub Gist 创建成功: {url}")
         return url
 
     except Exception as e:
-        logger.error(f"上传到Write.as失败: {e}")
+        logger.error(f"上传到 GitHub Gist 失败: {e}")
         raise
 
 
@@ -467,7 +515,7 @@ def main():
 
         today = datetime.now().strftime("%Y年%m月%d日")
         title = f"{today} | 资讯日报"
-        report_url = upload_to_writeas(title, report_md)
+        report_url = upload_to_github_gist(title, report_md)
 
         results = send_notifications(
             build_telegram_report_message(today, len(articles), report_url),
@@ -479,7 +527,7 @@ def main():
             logger.info("=" * 50)
             logger.info("✅ RSS日报推送成功！")
             logger.info(f"📰 文章数: {len(articles)}")
-            logger.info(f"🔗 Write.as URL: {report_url}")
+            logger.info(f"🔗 Gist URL: {report_url}")
             logger.info(f"📨 推送通道: {', '.join(results.keys())}")
             logger.info("=" * 50)
         else:

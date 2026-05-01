@@ -63,13 +63,20 @@ python scripts/test_telegram.py
 2. `Settings` → `Secrets and variables` → `Actions`
 3. 点击 `New repository secret`
 
-添加三个Secret：
+添加四个 Secret：
 
 | Name | Value | 说明 |
 |------|-------|------|
 | `ZHIPUAI_API_KEY` | 你的智谱AI API Key | 用于调用GLM模型 |
+| `GIST_GITHUB_TOKEN` | 你的 GitHub Gist Token | 用于发布日报页面 |
 | `TELEGRAM_BOT_TOKEN` | 你的Bot Token | Telegram机器人 |
 | `TELEGRAM_CHAT_ID` | 你的Chat ID | 接收消息的聊天 |
+
+另外建议添加一个 Repository Variable：
+
+| Name | Value | 说明 |
+|------|-------|------|
+| `PUSH_CHANNEL` | `telegram` | 推送渠道，可选 `telegram` / `discord` / `wechat` |
 
 ## 启用定时任务
 
@@ -155,6 +162,8 @@ pip install zhipuai
 
 # 3. 设置环境变量
 export ZHIPUAI_API_KEY="your_api_key"
+export GIST_GITHUB_TOKEN="your_github_gist_token"
+export PUSH_CHANNEL="telegram"
 export TELEGRAM_BOT_TOKEN="your_token"
 export TELEGRAM_CHAT_ID="your_chat_id"
 export HOURS_FILTER="24"
@@ -188,7 +197,7 @@ python scripts/run_daily.py
 
 **解决：**
 1. 检查Secrets名称是否完全一致（区分大小写）
-2. 检查所有三个Secret是否都已配置
+2. 检查 `ZHIPUAI_API_KEY`、`GIST_GITHUB_TOKEN`、`TELEGRAM_BOT_TOKEN`、`TELEGRAM_CHAT_ID` 是否都已配置
 3. 查看Actions日志了解详细错误
 
 ### 问题：无文章更新

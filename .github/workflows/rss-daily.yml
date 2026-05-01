@@ -28,7 +28,8 @@ jobs:
       - name: Run RSS Daily Report
         env:
           ZHIPUAI_API_KEY: ${{ secrets.ZHIPUAI_API_KEY }}
-          PUSH_CHANNEL: ${{ vars.PUSH_CHANNEL }}
+          GIST_GITHUB_TOKEN: ${{ secrets.GIST_GITHUB_TOKEN }}
+          PUSH_CHANNEL: ${{ vars.PUSH_CHANNEL || 'telegram' }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
@@ -52,6 +53,7 @@ jobs:
           echo "排查步骤："
           echo "1. 检查 GitHub Secrets / Variables 是否正确配置："
           echo "   - ZHIPUAI_API_KEY（智谱AI API密钥）"
+          echo "   - GIST_GITHUB_TOKEN（GitHub Gist 发布令牌）"
           echo "   - PUSH_CHANNEL（仓库 Variables，值为 telegram / discord / wechat）"
           echo "   - TELEGRAM_BOT_TOKEN"
           echo "   - TELEGRAM_CHAT_ID"
@@ -63,6 +65,7 @@ jobs:
           echo ""
           echo "3. 本地测试："
           echo "   export ZHIPUAI_API_KEY='your_api_key'"
+          echo "   export GIST_GITHUB_TOKEN='your_github_gist_token'"
           echo "   export PUSH_CHANNEL='wechat'"
           echo "   export TELEGRAM_BOT_TOKEN='your_token'"
           echo "   export TELEGRAM_CHAT_ID='your_chat_id'"
