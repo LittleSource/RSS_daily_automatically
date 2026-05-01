@@ -337,12 +337,45 @@ def call_llm_generate_report(articles: List[Dict[str, Any]]) -> str:
         )
 
         report = response.choices[0].message.content
+        if not report:
+            logger.warning("智谱AI返回空内容，使用默认日报模板")
+            report = _build_default_report(articles)
         logger.info("日报生成成功")
         return report
 
     except Exception as e:
         logger.error(f"调用智谱AI失败: {e}")
         raise
+
+
+def _build_default_report(articles: List[Dict[str, Any]]) -> str:
+    """
+    当智谱AI返回空内容时，生成一个简单的默认日报。
+    """
+    from datetime import datetime
+
+    today = datetime.now().strftime("%Y年%m月%d日")
+    lines = [f"# 📰 {today} | 资讯日报\n"]
+    lines.append(f"> 今日共获取 **{len(articles)}** 篇资讯\n")
+    lines.append("---\n")
+
+    # 按来源分组
+    sources: Dict[str, List[Dict[str, Any]]] = {}
+    for article in articles:
+        src = article.get("source", "未知")
+        sources.setdefault(src, []).append(article)
+
+    for src, src_articles in sources.items():
+        lines.append(f"## {src}\n")
+        for article in src_articles:
+            lines.append(f"- [{article['title']}]({article['link']})")
+            if article.get("summary"):
+                lines.append(f"  - {article['summary'][:100]}")
+        lines.append("")
+
+    lines.append("---\n")
+    lines.append("*由 RSS日报自动推送 自动生成*")
+    return "\n".join(lines)
 
 
 def normalize_report_markdown(md_content: str) -> str:
@@ -422,6 +455,9 @@ def upload_to_github_gist(title: str, md_content: str) -> str:
     logger.info("开始上传到 GitHub Gist...")
 
     try:
+        if not md_content:
+            raise ValueError("Markdown 内容为空，无法上传到 GitHub Gist")
+
         access_token = os.getenv("GIST_GITHUB_TOKEN", "").strip()
         if not access_token:
             raise ValueError(
