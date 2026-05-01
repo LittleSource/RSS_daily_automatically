@@ -402,7 +402,7 @@ def build_gist_filename() -> str:
     """
     filename = os.getenv("GIST_FILENAME", "").strip()
     if not filename:
-        filename = f"rss-daily-{datetime.now().strftime('%Y-%m-%d')}.md"
+        filename = f"{datetime.now().strftime('%Y%m%d')}.md"
 
     if not filename.endswith(".md"):
         filename = f"{filename}.md"
