@@ -45,6 +45,9 @@ RSS_SOURCES = [
 ]
 
 SUPPORTED_PUSH_CHANNELS = ("telegram", "discord", "wechat")
+DEFAULT_LLM_MAX_TOKENS = 8192
+DEFAULT_LLM_CONTINUATION_ROUNDS = 3
+DEFAULT_LLM_ARTICLE_LIMIT = 50
 
 
 def get_selected_push_channel() -> str:
@@ -295,29 +298,13 @@ def call_llm_generate_report(articles: List[Dict[str, Any]]) -> str:
         llm_config = json.load(f)
 
     # 准备文章摘要
-    articles_text = ""
-    for i, article in enumerate(articles[:50], 1):  # 最多50篇
-        articles_text += f"{i}. 【{article['source']}】{article['title']}\n"
-        articles_text += f"   链接: {article['link']}\n"
-        if article["summary"]:
-            articles_text += f"   摘要: {article['summary']}\n"
-        articles_text += "\n"
+    article_limit = int(
+        os.getenv("LLM_ARTICLE_LIMIT", str(DEFAULT_LLM_ARTICLE_LIMIT))
+    )
+    articles_text = build_articles_text(articles, limit=article_limit)
 
     # 构建用户提示词
-    user_prompt = f"""
-请根据以下今日资讯生成一份结构化日报：
-
-{articles_text}
-
-要求：
-1. 突出重要新闻和趋势
-2. 分类整理（技术、科技、加密货币、热点等）
-3. 推荐3-5篇最值得阅读的文章
-4. 总结今日亮点和趋势
-5. 使用emoji增加可读性
-6. 输出Markdown格式，使用合适的标题和列表
-7. “🔥 热门推荐”部分不要使用任何数字序号，使用无序列表或单独换行展示即可
-"""
+    user_prompt = build_report_user_prompt(articles_text)
 
     # 调用智谱AI API
     try:
@@ -325,18 +312,11 @@ def call_llm_generate_report(articles: List[Dict[str, Any]]) -> str:
 
         client = ZhipuAI(api_key=api_key)
 
-        response = client.chat.completions.create(
-            model=llm_config["config"]["model"],
-            messages=[
-                {"role": "system", "content": llm_config["sp"]},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=llm_config["config"].get("temperature", 0.7),
-            max_tokens=llm_config["config"].get("max_tokens", 4096),
-            top_p=llm_config["config"].get("top_p", 0.9),
+        report = generate_report_with_continuation(
+            client=client,
+            llm_config=llm_config,
+            user_prompt=user_prompt,
         )
-
-        report = response.choices[0].message.content
         if not report:
             logger.warning("智谱AI返回空内容，使用默认日报模板")
             report = _build_default_report(articles)
@@ -378,10 +358,204 @@ def _build_default_report(articles: List[Dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def build_articles_text(articles: List[Dict[str, Any]], limit: int) -> str:
+    """
+    将文章列表整理为传给大模型的纯文本。
+    """
+    article_chunks: List[str] = []
+    for i, article in enumerate(articles[:limit], 1):
+        article_chunks.append(f"{i}. 【{article['source']}】{article['title']}")
+        article_chunks.append(f"   链接: {article['link']}")
+        if article["summary"]:
+            article_chunks.append(f"   摘要: {article['summary']}")
+        article_chunks.append("")
+
+    return "\n".join(article_chunks)
+
+
+def build_report_user_prompt(articles_text: str) -> str:
+    """
+    构建日报生成提示词。
+    """
+    return f"""
+请根据以下今日资讯生成一份结构化日报：
+
+{articles_text}
+
+要求：
+1. 突出重要新闻和趋势
+2. 分类整理（技术、科技、加密货币、热点等）
+3. 推荐3-5篇最值得阅读的文章
+4. 总结今日亮点和趋势
+5. 使用emoji增加可读性
+6. 输出Markdown格式，使用合适的标题和列表
+7. “🔥 热门推荐”部分不要使用任何数字序号，使用无序列表或单独换行展示即可
+8. 如果内容较长，也必须完整输出，不要在中间省略或截断
+""".strip()
+
+
+def resolve_llm_max_tokens(llm_config: Dict[str, Any]) -> int:
+    """
+    获取大模型输出 token 上限，支持环境变量覆盖。
+    """
+    raw_value = os.getenv("LLM_MAX_TOKENS")
+    if raw_value:
+        return int(raw_value)
+
+    configured_value = llm_config["config"].get("max_tokens", DEFAULT_LLM_MAX_TOKENS)
+    return max(int(configured_value), DEFAULT_LLM_MAX_TOKENS)
+
+
+def extract_choice_content(choice: Any) -> str:
+    """
+    兼容不同 SDK 响应结构，提取文本内容。
+    """
+    message = getattr(choice, "message", None)
+    if message is None and isinstance(choice, dict):
+        message = choice.get("message", {})
+
+    content = getattr(message, "content", None)
+    if content is None and isinstance(message, dict):
+        content = message.get("content", "")
+
+    if isinstance(content, list):
+        text_parts: List[str] = []
+        for item in content:
+            if isinstance(item, str):
+                text_parts.append(item)
+                continue
+
+            if isinstance(item, dict):
+                text_parts.append(str(item.get("text", "")))
+                continue
+
+            text_parts.append(str(getattr(item, "text", "")))
+
+        return "".join(text_parts).strip()
+
+    return str(content or "").strip()
+
+
+def extract_finish_reason(choice: Any) -> str:
+    """
+    提取大模型停止原因。
+    """
+    finish_reason = getattr(choice, "finish_reason", None)
+    if finish_reason is None and isinstance(choice, dict):
+        finish_reason = choice.get("finish_reason", "")
+
+    return str(finish_reason or "").strip().lower()
+
+
+def should_continue_generation(finish_reason: str) -> bool:
+    """
+    判断是否需要继续生成剩余内容。
+    """
+    return finish_reason in {"length", "max_tokens"}
+
+
+def merge_markdown_chunks(base: str, continuation: str) -> str:
+    """
+    合并被截断的 Markdown 片段，尽量去掉重复前缀。
+    """
+    base_clean = base.rstrip()
+    continuation_clean = continuation.lstrip()
+
+    if not base_clean:
+        return continuation_clean
+    if not continuation_clean:
+        return base_clean
+
+    max_overlap = min(len(base_clean), len(continuation_clean), 200)
+    overlap_found = False
+    for overlap_size in range(max_overlap, 2, -1):
+        if base_clean.endswith(continuation_clean[:overlap_size]):
+            continuation_clean = continuation_clean[overlap_size:]
+            overlap_found = True
+            break
+
+    if not continuation_clean:
+        return base_clean
+
+    if overlap_found:
+        return f"{base_clean}{continuation_clean}"
+
+    if base_clean.endswith("\n") or continuation_clean.startswith("\n"):
+        return f"{base_clean}{continuation_clean}"
+
+    return f"{base_clean}\n{continuation_clean}"
+
+
+def generate_report_with_continuation(
+    client: Any, llm_config: Dict[str, Any], user_prompt: str
+) -> str:
+    """
+    调用大模型生成日报；若因长度截断则自动续写。
+    """
+    max_tokens = resolve_llm_max_tokens(llm_config)
+    continuation_rounds = int(
+        os.getenv("LLM_CONTINUATION_ROUNDS", str(DEFAULT_LLM_CONTINUATION_ROUNDS))
+    )
+    messages: List[Dict[str, str]] = [
+        {"role": "system", "content": llm_config["sp"]},
+        {"role": "user", "content": user_prompt},
+    ]
+    report = ""
+
+    for attempt in range(continuation_rounds + 1):
+        response = client.chat.completions.create(
+            model=llm_config["config"]["model"],
+            messages=messages,
+            temperature=llm_config["config"].get("temperature", 0.7),
+            max_tokens=max_tokens,
+            top_p=llm_config["config"].get("top_p", 0.9),
+        )
+        choice = response.choices[0]
+        chunk = extract_choice_content(choice)
+        finish_reason = extract_finish_reason(choice)
+
+        logger.info(
+            "LLM 输出片段完成：attempt=%s finish_reason=%s chars=%s",
+            attempt + 1,
+            finish_reason or "unknown",
+            len(chunk),
+        )
+
+        report = merge_markdown_chunks(report, chunk)
+        if not should_continue_generation(finish_reason):
+            break
+
+        messages.extend(
+            [
+                {"role": "assistant", "content": chunk},
+                {
+                    "role": "user",
+                    "content": (
+                        "你刚才的输出因为长度限制被截断了。"
+                        "请从中断处继续补全剩余 Markdown，"
+                        "不要重新开头，不要重复已经完整输出的部分。"
+                        "如果最后一行被截断，请从该行开头重写该行后继续。"
+                    ),
+                },
+            ]
+        )
+    else:
+        logger.warning("LLM 已达到最大续写轮次，日报可能仍然不完整")
+
+    return report
+
+
 def normalize_report_markdown(md_content: str) -> str:
     """
-    规范化日报 Markdown，去掉热门推荐中的序号。
+    规范化日报 Markdown，去掉代码块包裹，并清理热门推荐中的序号。
     """
+    stripped_content = md_content.strip()
+    fenced_match = re.fullmatch(
+        r"```(?:markdown|md)?\s*\n?(.*?)\n?```", stripped_content, flags=re.DOTALL
+    )
+    if fenced_match:
+        md_content = fenced_match.group(1).strip()
+
     lines = md_content.splitlines()
     normalized_lines: List[str] = []
     in_hot_section = False
@@ -547,7 +721,7 @@ def main():
             logger.info(f"空日报通知已发送: {', '.join(results.keys())}")
             return
 
-        report_md = call_llm_generate_report(articles)
+        report_md = normalize_report_markdown(call_llm_generate_report(articles))
 
         today = datetime.now().strftime("%Y年%m月%d日")
         title = f"{today} | 资讯日报"
