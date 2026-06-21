@@ -40,7 +40,7 @@ def send_to_wechat(message: str, toWxid = 1) -> Dict[str, Any]:
     app_id = os.getenv("GEWE_APP_ID")
 
     to_wxid = os.getenv("WECHAT_TO_WXID")
-    if toWxid != 1
+    if toWxid != 1:
         to_wxid = os.getenv("WECHAT_TO_WXID2")
 
     if not token or not app_id or not to_wxid:
