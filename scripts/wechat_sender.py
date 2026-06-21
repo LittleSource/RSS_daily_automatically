@@ -29,7 +29,7 @@ def get_wechat_config_status() -> Dict[str, bool]:
     }
 
 
-def send_to_wechat(message: str) -> Dict[str, Any]:
+def send_to_wechat(message: str, toWxid = 1) -> Dict[str, Any]:
     """
     通过 GeWe 发送微信文本消息。
     参考文档: https://doc.geweapi.com/api-139908313
@@ -38,7 +38,10 @@ def send_to_wechat(message: str) -> Dict[str, Any]:
 
     token = os.getenv("GEWE_TOKEN")
     app_id = os.getenv("GEWE_APP_ID")
+
     to_wxid = os.getenv("WECHAT_TO_WXID")
+    if toWxid != 1
+        to_wxid = os.getenv("WECHAT_TO_WXID2")
 
     if not token or not app_id or not to_wxid:
         raise ValueError(

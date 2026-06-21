@@ -1,6 +1,9 @@
 name: RSS Daily Report
 
 on:
+  schedule:
+    - cron: "30 8 * * *"
+      timezone: "Asia/Shanghai"
   workflow_dispatch: # 支持手动触发
 
 jobs:
@@ -35,10 +38,11 @@ jobs:
           GEWE_TOKEN: ${{ secrets.GEWE_TOKEN }}
           GEWE_APP_ID: ${{ secrets.GEWE_APP_ID }}
           WECHAT_TO_WXID: ${{ secrets.WECHAT_TO_WXID }}
+          WECHAT_TO_WXID2: ${{ secrets.WECHAT_TO_WXID2 }}
           HOURS_FILTER: ${{ vars.HOURS_FILTER || '24' }}
         run: |
           echo "🚀 开始执行RSS日报推送..."
-          python scripts/run_daily.py
+          python scripts/send.py
 
       - name: Notify on Failure
         if: failure()
