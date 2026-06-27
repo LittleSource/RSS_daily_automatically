@@ -37,10 +37,6 @@ def main():
 
     try:
         today_date = datetime.now()
-        # 检查 HOURS_FILTER，如果跨天则用昨天
-        hours_filter = int(os.getenv("HOURS_FILTER", "24"))
-        if hours_filter > 12:
-            today_date = today_date - timedelta(days=1)
         today = today_date.strftime("%Y年%m月%d日")
         report_url = today_date.strftime("https://littlesource.github.io/Horizon/%Y/%m/%d/summary-zh.html")
         result = send_to_wechat(build_wechat_report_message(today, report_url))
