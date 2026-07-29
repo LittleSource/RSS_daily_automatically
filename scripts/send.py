@@ -49,15 +49,15 @@ def main():
             logger.error(f"❌ 推送失败: {result}")
             sys.exit(1)
 
-        result = send_to_wechat("药店签到", 2)
+        # result = send_to_wechat("药店签到", 2)
 
-        if result.get("success"):
-            logger.info("=" * 50)
-            logger.info("✅ 药店签到推送成功！")
-            logger.info("=" * 50)
-        else:
-            logger.error(f"❌ 推送失败: {result}")
-            sys.exit(1)
+        # if result.get("success"):
+        #     logger.info("=" * 50)
+        #     logger.info("✅ 药店签到推送成功！")
+        #     logger.info("=" * 50)
+        # else:
+        #     logger.error(f"❌ 推送失败: {result}")
+        #     sys.exit(1)
 
     except Exception as e:
         logger.error(f"❌ 任务执行失败: {e}", exc_info=True)
